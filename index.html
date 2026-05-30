@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Financeiro La Bicyclette</title>
+    <link rel="stylesheet" href="styles.css?v=20260526-9">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow" id="dashboardMonthLabel">Portal Linx Menew</p>
+        <h1>Financeiro La Bicyclette</h1>
+      </div>
+      <div class="toolbar" role="group" aria-label="Filtros">
+        <button class="unit-button active" data-unit="all">Grupo</button>
+        <button class="unit-button" data-unit="barra-leblon">Barra + Leblon</button>
+        <button class="unit-button" data-unit="barra">Barra</button>
+        <button class="unit-button" data-unit="leblon">Leblon</button>
+        <button class="unit-button" data-unit="jb">JB</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" id="summary"></section>
+      <section class="summary-detail" id="summaryDetail"></section>
+      <section class="unit-summary-grid" id="unitSummary"></section>
+      <section class="panel explanation-panel" id="accountingNote"></section>
+
+      <section class="layout comparison-layout" id="comparisonSection">
+        <div class="panel wide comparison-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Comparativo</p>
+              <h2>Receita, despesas e lucro</h2>
+            </div>
+          </div>
+          <div id="barChart" class="bar-chart"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Mix de custos</p>
+              <h2>Principais categorias</h2>
+            </div>
+          </div>
+          <div id="costMix" class="pie-section"></div>
+        </div>
+      </section>
+
+      <section class="layout insight-layout">
+        <div class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Ponto de equilibrio</p>
+              <h2>Quanto precisa faturar</h2>
+            </div>
+          </div>
+          <div id="breakEven" class="break-even"></div>
+        </div>
+
+        <div class="panel wide">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Onde olhar primeiro</p>
+              <h2>Despesas que mais pesam</h2>
+            </div>
+          </div>
+          <div id="detailTable" class="heavy-costs"></div>
+        </div>
+      </section>
+
+      <section class="panel analysis-panel">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Analise inicial</p>
+            <h2>Leitura rapida dos custos fixos</h2>
+          </div>
+        </div>
+        <div id="analysis" class="analysis"></div>
+      </section>
+
+      <section class="panel bank-panel">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Conferencia bancaria</p>
+            <h2>Relatorio vs. dinheiro em conta</h2>
+          </div>
+        </div>
+        <div id="bankReconciliation" class="bank-reconciliation"></div>
+      </section>
+
+      <section class="panel evolution-panel">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Evolucao mensal</p>
+            <h2>Comparativo com meses anteriores</h2>
+          </div>
+        </div>
+        <div id="evolution"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Historico mensal</p>
+            <h2>Como alimentar os proximos meses</h2>
+          </div>
+        </div>
+        <div class="history">
+          <p>Abra o importador, selecione os PDFs do mes e gere a analise no proprio navegador. A estrutura separa Barra, Leblon, JB Loja e JB Delivery Filial, mas tambem mostra JB consolidado e Barra + Leblon consolidado.</p>
+          <p>Depois de importar, baixe o pacote do mes para guardar o historico ou comparar com meses anteriores.</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const dashboardMonth = new URLSearchParams(window.location.search).get("month") || "2026-03";
+      const dashboardSource = new URLSearchParams(window.location.search).get("source");
+      const dashboardVersion = "20260530-1";
+      function packageKey(month) {
+        return `financePackage:${month}`;
+      }
+
+      function loadLocalPackage(month) {
+        const raw = localStorage.getItem(packageKey(month));
+        if (!raw) return false;
+        const payload = JSON.parse(raw);
+        const hierarchyName = "financeHierarchy" + month.replace("-", "");
+        window.financeDataset = payload.dataset;
+        window[hierarchyName] = payload.hierarchy || {};
+        return true;
+      }
+
+      function loadDashboardScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`Nao foi possivel carregar ${src}`));
+          document.body.appendChild(script);
+        });
+      }
+
+      (async () => {
+        const loadedLocal = dashboardSource === "local" && loadLocalPackage(dashboardMonth);
+        if (!loadedLocal) {
+          await loadDashboardScript(`dados/hierarquia-${dashboardMonth}.js?v=${dashboardVersion}`);
+          await loadDashboardScript(`dados/metricas-${dashboardMonth}.js?v=${dashboardVersion}`);
+        }
+        await loadDashboardScript(`app.js?v=${dashboardVersion}`);
+      })().catch((error) => {
+        document.querySelector("main").innerHTML = `
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Importacao necessaria</p>
+                <h2>Nenhum mes foi carregado neste navegador</h2>
+              </div>
+            </div>
+            <div class="history">
+              <p>Abra o importador, selecione os PDFs do mes e a analise sera gerada localmente no navegador.</p>
+              <p><a class="unit-button active upload-link" href="admin.html">Abrir importador</a></p>
+              <p><small>${error.message}</small></p>
+            </div>
+          </section>
+        `;
+      });
+    </script>
+  </body>
+</html>
