@@ -92,18 +92,46 @@ async function extractPdfText(file, pdfjsLib) {
 }
 
 function parseAccounts(text) {
-  const pattern = /^(\d{2,})\s*-\s*([\s\S]*?)\s*Nível:\s*\n?\s*(\d+)/gm;
-  const matches = [...text.matchAll(pattern)];
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const starts = lines
+    .map((line, index) => ({ line, index, match: line.match(/^(\d{2,})\s*-\s*(.*)$/) }))
+    .filter((item) => item.match);
   const accounts = [];
 
-  matches.forEach((match, index) => {
-    const code = match[1];
-    const name = cleanName(match[2]);
-    const level = Number(match[3]);
-    const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
-    const segment = text.slice(match.index + match[0].length, end);
+  starts.forEach((start, startIndex) => {
+    const code = start.match[1];
+    const end = startIndex + 1 < starts.length ? starts[startIndex + 1].index : lines.length;
+    const block = lines.slice(start.index, end);
+    const segment = block.join("\n");
     const amounts = segment.match(/-?\s*R\$\s*[\d.]+,\d{2}/g) || [];
     const values = amounts.map(parseMoney);
+
+    const inlineLevel = segment.match(/Nível:\s*(\d+)/i);
+    const levelLine = block.find((line, index) => index > 0 && /^\d+\b/.test(line));
+    const trailingLevelLine = block.find((line, index) => {
+      if (index === 0 || /R\$/.test(line)) return false;
+      return /\s\d+$/.test(line);
+    });
+    const level = Number(
+      inlineLevel?.[1]
+      || levelLine?.match(/^(\d+)\b/)?.[1]
+      || trailingLevelLine?.match(/(\d+)$/)?.[1]
+      || 0
+    );
+
+    let namePart = start.match[2]
+      .replace(/\s*Nível:.*$/i, "")
+      .replace(/\s*-?\s*R\$\s*[\d.]+,\d{2}.*$/, "")
+      .trim();
+
+    const continuation = block.find((line, index) => {
+      if (index === 0 || /R\$|Nível:|about:blank|Portal Linx/i.test(line)) return false;
+      if (/^\d+\b/.test(line)) return false;
+      return /\D/.test(line);
+    });
+    if (continuation) {
+      namePart = `${namePart} ${continuation.replace(/\s+\d+$/, "")}`.trim();
+    }
 
     let revenue = 0;
     let expense = 0;
@@ -115,11 +143,11 @@ function parseAccounts(text) {
     }
 
     const value = Math.abs(subtotal || expense || revenue);
-    if (value === 0 || Number.isNaN(value)) return;
+    if (value === 0 || Number.isNaN(value) || !level) return;
 
     accounts.push({
       code,
-      name,
+      name: cleanName(namePart),
       level,
       value: Number(value.toFixed(2))
     });
@@ -214,12 +242,25 @@ function parseBradescoBank(text) {
 }
 
 function inferBankFile(file, text) {
+  const filename = normalizeText(file.name);
   const combined = normalizeText(`${file.name}\n${text}`);
   const bank = combined.includes("bradesco") ? "Bradesco" : combined.includes("itau") ? "Itaú" : "Banco";
 
   let unitId = "";
   let account = file.name.replace(/\.pdf$/i, "");
-  if (combined.includes("delivery filial") || combined.includes("jb delivery") || combined.includes("jardim botanico - dlv")) {
+  if (filename.includes("delivery-filial") || filename.includes("jb-delivery")) {
+    unitId = "jb-delivery";
+    account = "JB Delivery";
+  } else if (filename.includes("jb-loja") || (filename.includes("jb") && !filename.includes("delivery"))) {
+    unitId = "jb-loja";
+    account = "JB Loja";
+  } else if (filename.includes("leblon")) {
+    unitId = "leblon";
+    account = "Leblon";
+  } else if (filename.includes("barra") || filename.includes("boulangerie")) {
+    unitId = "barra";
+    account = "Barra";
+  } else if (combined.includes("delivery filial") || combined.includes("jb delivery") || combined.includes("jardim botanico - dlv")) {
     unitId = "jb-delivery";
     account = "JB Delivery";
   } else if (combined.includes("jb loja") || combined.includes("jardim botanico")) {
