@@ -943,6 +943,21 @@ button.metric.active {
   font-weight: 800;
 }
 
+.upload-group {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(31, 41, 58, 0.52);
+}
+
+.upload-group h3 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+}
+
 .upload-form input {
   width: 100%;
   border: 1px solid var(--line);
@@ -1015,12 +1030,64 @@ button.metric.active {
   overflow-x: auto;
 }
 
+.evolution-sparks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.spark-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-soft), #161b24);
+}
+
+.spark-card div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  align-items: baseline;
+}
+
+.spark-card span,
+.spark-card em {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.spark-card strong {
+  font-size: 22px;
+}
+
+.spark-card em {
+  grid-column: 1 / -1;
+  font-style: normal;
+}
+
+.sparkline {
+  width: 100%;
+  height: 46px;
+}
+
+.sparkline path {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .evolution-row {
   display: grid;
-  grid-template-columns: 92px repeat(8, minmax(110px, 1fr));
+  grid-template-columns: 92px repeat(9, minmax(112px, 1fr));
   gap: 10px;
   align-items: center;
-  min-width: 1120px;
+  min-width: 1320px;
   padding: 10px 12px;
   border-radius: 7px;
   background: rgba(99, 210, 158, 0.07);
@@ -1212,6 +1279,7 @@ button.metric.active {
   .note-grid,
   .bank-summary-grid,
   .bank-compare,
+  .evolution-sparks,
   .layout,
   .detail-split {
     grid-template-columns: 1fr;

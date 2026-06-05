@@ -10,11 +10,12 @@ const pct = new Intl.NumberFormat("pt-BR", {
 });
 
 const labels = {
-  revenue: "Recebimentos",
-  expenses: "Saidas totais",
+  revenue: "Faturamento",
+  expenses: "Despesas",
   operationalExpenses: "Despesas operacionais",
-  realProfit: "Resultado de caixa",
-  cmv: "Materia prima / CMV",
+  realProfit: "Lucro real",
+  cmv: "CMV comida",
+  packaging: "Embalagens/descartaveis",
   taxes: "Impostos",
   people: "Pessoal",
   occupancy: "Ocupacao",
@@ -29,7 +30,7 @@ const labels = {
 
 const palette = ["#3fd18b", "#5f9cff", "#f2b84b", "#f26d5b", "#39c5c8", "#a887ff", "#f08a55", "#aab4c3"];
 const neutral = "#d7dce0";
-const variableCostKeys = ["cmv", "taxes", "commissions"];
+const variableCostKeys = ["cmv", "packaging", "taxes", "commissions"];
 
 const state = {
   selected: "all",
@@ -92,6 +93,10 @@ function displayProfit(unit) {
   return displayRevenue(unit) - displayExpenses(unit);
 }
 
+function displayCashResult(unit) {
+  return unit.cashResult ?? unit.realProfit ?? displayProfit(unit);
+}
+
 function fixedCost(unit) {
   return unit.operationalExpenses - variableCost(unit);
 }
@@ -100,6 +105,7 @@ function variableCostRows(unit) {
   const rows = [...unit.detail]
     .filter((item) => {
       return item.group === "CMV"
+        || item.group === "Embalagens"
         || item.group === "Impostos"
         || item.group === "Comissoes";
     })
@@ -122,8 +128,9 @@ function variableCostRows(unit) {
 }
 
 function fixedCostRows(unit) {
-  const variableGroups = new Set(["CMV", "Impostos", "Comissoes"]);
+  const variableGroups = new Set(["CMV", "Embalagens", "Impostos", "Comissoes"]);
   const rows = new Map();
+  const detailGroupTotals = {};
 
   [...unit.detail]
     .filter((item) => item.group !== "Receita")
@@ -138,13 +145,14 @@ function fixedCostRows(unit) {
       const key = `${item.group}::${name}`;
       const current = rows.get(key) || { name, group: item.group, value: 0 };
       current.value += item.value;
+      detailGroupTotals[item.group] = (detailGroupTotals[item.group] || 0) + item.value;
       rows.set(key, current);
     });
 
   [
     ["Publicidade", unit.categories.publicity || 0],
     ["Uso e consumo", unit.categories.useAndConsumption || 0],
-    ["Material operacional", unit.categories.operationalMaterial || 0],
+    ["Material operacional", Math.max((unit.categories.operationalMaterial || 0) - (detailGroupTotals["Material operacional"] || 0), 0)],
     ["Juridico / contador / taxas legais", unit.categories.legal || 0]
   ].forEach(([name, value]) => {
     if (value > 0) {
@@ -316,6 +324,9 @@ function combineUnits(id, name, units) {
     expenses: units.reduce((sum, unit) => sum + unit.expenses, 0),
     operationalExpenses: units.reduce((sum, unit) => sum + unit.operationalExpenses, 0),
     realProfit: units.reduce((sum, unit) => sum + unit.realProfit, 0),
+    cashRevenue: units.reduce((sum, unit) => sum + (unit.cashRevenue ?? unit.revenue), 0),
+    cashExpenses: units.reduce((sum, unit) => sum + (unit.cashExpenses ?? unit.expenses), 0),
+    cashResult: units.reduce((sum, unit) => sum + displayCashResult(unit), 0),
     categories,
     variableItems,
     bankAccounts: units.flatMap((unit) => unit.bankAccounts || []),
@@ -355,7 +366,8 @@ function currentPackage() {
   const month = window.financeDataset.months?.[0] || "2026-03";
   const hierarchyName = "financeHierarchy" + month.replace("-", "");
   return {
-    version: 1,
+    version: 3,
+    importModel: "competence-cash-v3",
     type: "la-bicyclette-financeiro",
     month,
     dataset: window.financeDataset,
@@ -375,9 +387,9 @@ function downloadJson(filename, payload) {
 
 function renderSummary(unit) {
   const metrics = [
-    ["Recebimentos", displayRevenue(unit), "Balancete Linx: regime de caixa / pagos", "revenue"],
-    ["Saidas totais", displayExpenses(unit), profitDistribution(unit) > 0 ? `inclui ${money.format(profitDistribution(unit))} de distribuicao` : `${pct.format(percentOfRevenue(unit, displayExpenses(unit)))} dos recebimentos`],
-    ["Resultado de caixa", displayProfit(unit), `${pct.format(percentOfRevenue(unit, displayProfit(unit)))} de margem`],
+    ["Faturamento", displayRevenue(unit), "Relatorio Linx por competencia", "revenue"],
+    ["Despesas", displayExpenses(unit), profitDistribution(unit) > 0 ? `inclui ${money.format(profitDistribution(unit))} de distribuicao` : `${pct.format(percentOfRevenue(unit, displayExpenses(unit)))} do faturamento`],
+    ["Lucro real", displayProfit(unit), `${pct.format(percentOfRevenue(unit, displayProfit(unit)))} de margem`],
     ["Ponto de equilibrio", breakEven(unit), `${pct.format(contributionMargin(unit))} margem de contribuicao`]
   ];
 
@@ -416,7 +428,7 @@ function renderSummaryDetail(unit) {
         <span class="swatch" style="background:${palette[1]}"></span>
         <div>
           <strong>Detalhe do faturamento</strong>
-          <small>${money.format(displayRevenue(unit))} por origem no balancete de caixa</small>
+          <small>${money.format(displayRevenue(unit))} por origem no relatorio de competencia</small>
         </div>
       </div>
       <div class="detail-bars scrollable">
@@ -458,10 +470,10 @@ function renderUnitSummary(units) {
         <div>
           <span class="label">${unit.name}</span>
           <strong>${money.format(displayRevenue(unit))}</strong>
-          <small>recebimentos</small>
+          <small>faturamento</small>
         </div>
         <div>
-          <span class="label">Resultado de caixa</span>
+          <span class="label">Lucro real</span>
           <strong class="${displayProfit(unit) < 0 ? "negative" : "positive"}">${money.format(displayProfit(unit))}</strong>
           <small>${pct.format(percentOfRevenue(unit, displayProfit(unit)))} de margem</small>
         </div>
@@ -483,12 +495,12 @@ function renderAccountingNote(unit) {
     <div class="panel-title compact-title">
       <div>
         <p class="eyebrow">Leitura dos numeros</p>
-        <h2>O dashboard usa caixa pago, nao venda bruta do Linx</h2>
+        <h2>Competencia em cima, caixa na conferencia bancaria</h2>
       </div>
     </div>
     <div class="note-grid">
-      <p><strong>Recebimentos</strong> vem do Balancete Resumido em regime de caixa, com situacao paga. Por isso pode diferir do Faturamento Geral do dashboard Linx.</p>
-      <p><strong>Saidas totais</strong> e tudo que saiu no periodo: despesas operacionais + nao operacionais. Aqui: ${money.format(operational)} operacionais + ${money.format(nonOperational)} nao operacionais.</p>
+      <p><strong>Parte superior</strong> usa os relatorios por competencia: faturamento, despesas, lucro real, categorias e ponto de equilibrio.</p>
+      <p><strong>Conferencia bancaria</strong> usa os relatorios por caixa comparados aos extratos. Aqui na competencia: ${money.format(operational)} operacionais + ${money.format(nonOperational)} nao operacionais.</p>
       <p><strong>Nao operacional</strong> inclui itens como investimentos, obras/equipamentos e distribuicao de lucros${distribution ? ` (${money.format(distribution)} nesta visao)` : ""}.</p>
     </div>
   `;
@@ -535,10 +547,12 @@ function rawDetailName(name) {
 function categoryGroup(key) {
   return {
     cmv: "CMV",
+    packaging: "Embalagens",
     taxes: "Impostos",
     people: "Pessoal",
     occupancy: "Ocupacao",
     thirdParty: "Terceiros",
+    operationalMaterial: "Material operacional",
     nonOperational: "Nao operacional"
   }[key];
 }
@@ -709,6 +723,7 @@ function renderCostDetails(unit, activeKey, activeColor) {
 function renderCostMix(unit) {
   const keys = [
     "cmv",
+    "packaging",
     "people",
     "taxes",
     "occupancy",
@@ -817,7 +832,8 @@ function renderBreakEven(unit) {
       ${distance >= 0 ? `A unidade ficou ${money.format(distance)} acima do equilibrio.` : `Faltaram ${money.format(Math.abs(distance))} para empatar operacionalmente.`}
     </p>
     <div class="pill-row">
-      <span class="pill">CMV ${pct.format(percentOfRevenue(unit, unit.categories.cmv || 0))}</span>
+      <span class="pill">CMV comida ${pct.format(percentOfRevenue(unit, unit.categories.cmv || 0))}</span>
+      <span class="pill">Embalagens ${pct.format(percentOfRevenue(unit, unit.categories.packaging || 0))}</span>
       <span class="pill">Pessoal ${pct.format(percentOfRevenue(unit, unit.categories.people || 0))}</span>
       <span class="pill">Ocupacao ${pct.format(percentOfRevenue(unit, unit.categories.occupancy || 0))}</span>
     </div>
@@ -983,9 +999,9 @@ function renderAnalysis(unit) {
 
   const cards = [
     `${unit.name}: distribuicao de lucros permanece dentro das despesas, mas aparece destacada separadamente por ser uma retirada nao operacional. Custo fixo operacional estimado em ${money.format(fixed)}, com ponto de equilibrio perto de ${money.format(be)}.`,
-    `CMV em ${pct.format(cmvRate)} do faturamento. O primeiro corte fino deve olhar os maiores itens de materia prima, principalmente paes, sanduiches, mercearia e sobremesas onde aparecerem fortes no detalhe.`,
+    `CMV comida em ${pct.format(cmvRate)} do faturamento. Embalagens ficam separadas como variavel operacional; loucas, limpeza e materiais operacionais entram no fixo.`,
     `Pessoal em ${pct.format(peopleRate)} do faturamento e ocupacao em ${pct.format(occupancyRate)}. Esses dois blocos explicam boa parte do custo fixo; valem escala, jornada, extras/dobras, aluguel/energia e manutencoes.`,
-    `Motoboy esta classificado como custo fixo. Para a proxima importacao, os custos variaveis ficam concentrados em CMV, impostos e comissoes/tarifas.`
+    `Motoboy esta classificado como custo fixo. Os custos variaveis ficam concentrados em CMV comida, embalagens/descartaveis, impostos e comissoes/tarifas.`
   ];
 
   document.querySelector("#analysis").innerHTML = cards
@@ -1007,7 +1023,7 @@ function bankTotals(unit) {
 function renderBankReconciliation(unit, units) {
   const totals = bankTotals(unit);
   const bankVariation = totals.closingBalance - totals.openingBalance;
-  const reportCashResult = unit.realProfit;
+  const reportCashResult = displayCashResult(unit);
   const difference = bankVariation - reportCashResult;
   const statusClass = difference >= 0 ? "positive" : "negative";
   const differenceText = difference >= 0
@@ -1018,13 +1034,14 @@ function renderBankReconciliation(unit, units) {
     ? units.map((item) => {
         const itemTotals = bankTotals(item);
         const itemVariation = itemTotals.closingBalance - itemTotals.openingBalance;
-        const itemDifference = itemVariation - item.realProfit;
+        const itemCashResult = displayCashResult(item);
+        const itemDifference = itemVariation - itemCashResult;
         const itemStatusClass = itemDifference >= 0 ? "positive" : "negative";
         return `
           <div class="bank-unit-row">
             <strong>${item.name}</strong>
             <span>${money.format(itemVariation)}</span>
-            <span>${money.format(item.realProfit)}</span>
+            <span>${money.format(itemCashResult)}</span>
             <span class="${itemStatusClass}">${money.format(itemDifference)}</span>
           </div>
         `;
@@ -1058,9 +1075,9 @@ function renderBankReconciliation(unit, units) {
         <small>Saldo final - saldo inicial</small>
       </div>
       <div class="bank-step bank-step-report">
-        <span>Resultado caixa do relatório</span>
+        <span>Resultado caixa do relatório de caixa</span>
         <strong>${money.format(reportCashResult)}</strong>
-        <small>Lucro/caixa importado do Linx</small>
+        <small>Base separada da análise por competência</small>
       </div>
       <div class="bank-step bank-step-difference ${statusClass}">
         <span>Diferença a investigar</span>
@@ -1074,7 +1091,7 @@ function renderBankReconciliation(unit, units) {
         <div class="bank-unit-row head">
           <strong>Unidade</strong>
           <span>Variação banco</span>
-          <span>Resultado relatório</span>
+          <span>Resultado caixa</span>
           <span>Diferença</span>
         </div>
         ${unitRows}
@@ -1100,7 +1117,7 @@ function renderBankReconciliation(unit, units) {
     </div>
 
     <p class="bank-note">
-      A comparação principal usa o resultado de caixa original do relatório, com distribuição de lucros dentro das despesas, porque essa retirada também aparece como saída de dinheiro no banco.
+      A comparação principal usa o resultado do relatório de caixa, com distribuição de lucros dentro das despesas, porque essa retirada também aparece como saída de dinheiro no banco.
     </p>
   `;
 }
@@ -1118,6 +1135,74 @@ function savePackages() {
   localStorage.setItem("financeiroComparisonPackages", JSON.stringify(state.comparisonPackages));
 }
 
+function deltaClass(value) {
+  return value >= 0 ? "positive" : "negative";
+}
+
+function formatDelta(value) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  return `<em class="${deltaClass(value)}">${value >= 0 ? "+" : ""}${pct.format(value)}</em>`;
+}
+
+function formatPointDelta(value) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  return `<em class="${deltaClass(value)}">${value >= 0 ? "+" : ""}${(value * 100).toFixed(1).replace(".", ",")} p.p.</em>`;
+}
+
+function metricDelta(row, previous, key) {
+  if (!previous || !previous[key]) {
+    return "";
+  }
+  return formatDelta((row[key] - previous[key]) / Math.abs(previous[key]));
+}
+
+function rateDelta(row, previous, key) {
+  if (!previous) {
+    return "";
+  }
+  return formatPointDelta(row[key] - previous[key]);
+}
+
+function sparklinePath(values, width = 180, height = 46) {
+  if (!values.length) {
+    return "";
+  }
+  if (values.length === 1) {
+    return `M 0 ${height / 2} L ${width} ${height / 2}`;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  return values.map((value, index) => {
+    const x = (index / (values.length - 1)) * width;
+    const y = height - ((value - min) / range) * (height - 8) - 4;
+    return `${index ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function renderSparkCard(rows, key, label, color) {
+  const values = rows.map((row) => row[key] || 0);
+  const current = rows.at(-1)?.[key] || 0;
+  const previous = rows.at(-2)?.[key];
+  const delta = previous === undefined ? "" : formatPointDelta(current - previous);
+  return `
+    <article class="spark-card">
+      <div>
+        <span>${label}</span>
+        <strong>${pct.format(current)}</strong>
+        ${delta}
+      </div>
+      <svg class="sparkline" viewBox="0 0 180 46" aria-hidden="true">
+        <path d="${sparklinePath(values)}" style="stroke:${color}"></path>
+      </svg>
+    </article>
+  `;
+}
+
 function renderEvolution() {
   const container = document.querySelector("#evolution");
   const definition = currentDefinition();
@@ -1133,11 +1218,16 @@ function renderEvolution() {
       revenue: displayRevenue(view),
       expenses: displayExpenses(view),
       cmv: view.categories.cmv || 0,
+      taxes: view.categories.taxes || 0,
       people: view.categories.people || 0,
       occupancy: view.categories.occupancy || 0,
       profit: displayProfit(view),
       breakEven: breakEven(view),
-      bankDifference: bankTotals(view).closingBalance - bankTotals(view).openingBalance - view.realProfit
+      bankDifference: bankTotals(view).closingBalance - bankTotals(view).openingBalance - displayCashResult(view),
+      cmvRate: percentOfRevenue(view, view.categories.cmv || 0),
+      taxesRate: percentOfRevenue(view, view.categories.taxes || 0),
+      peopleRate: percentOfRevenue(view, view.categories.people || 0),
+      occupancyRate: percentOfRevenue(view, view.categories.occupancy || 0)
     };
   });
 
@@ -1157,23 +1247,29 @@ function renderEvolution() {
         <span>Importe um ou mais pacotes de meses anteriores para comparar faturamento, despesas, CMV, pessoal, ocupacao, lucro, ponto de equilibrio e diferenca bancaria.</span>
       </div>
     ` : `
+      <div class="evolution-sparks">
+        ${renderSparkCard(rows, "cmvRate", "CMV comida", palette[0])}
+        ${renderSparkCard(rows, "peopleRate", "Pessoal", palette[1])}
+        ${renderSparkCard(rows, "occupancyRate", "Ocupacao", palette[2])}
+        ${renderSparkCard(rows, "taxesRate", "Impostos", palette[3])}
+      </div>
       <div class="evolution-table">
         <div class="evolution-row head">
-          <span>Mes</span><span>Faturamento</span><span>Despesas</span><span>CMV</span><span>Pessoal</span><span>Ocupacao</span><span>Lucro</span><span>Equilibrio</span><span>Dif. banco</span>
+          <span>Mes</span><span>Faturamento</span><span>Despesas</span><span>CMV comida</span><span>Pessoal</span><span>Ocupacao</span><span>Impostos</span><span>Lucro</span><span>Equilibrio</span><span>Dif. banco</span>
         </div>
         ${rows.map((row, index) => {
           const previous = rows[index - 1];
-          const revenueDelta = previous ? (row.revenue - previous.revenue) / previous.revenue : 0;
           return `
             <div class="evolution-row">
               <strong>${row.month}</strong>
-              <span>${money.format(row.revenue)} ${previous ? `<em class="${revenueDelta >= 0 ? "positive" : "negative"}">${pct.format(revenueDelta)}</em>` : ""}</span>
-              <span>${money.format(row.expenses)}</span>
-              <span>${pct.format(percentOfTotal(row.revenue, row.cmv))}</span>
-              <span>${pct.format(percentOfTotal(row.revenue, row.people))}</span>
-              <span>${pct.format(percentOfTotal(row.revenue, row.occupancy))}</span>
-              <span class="${row.profit >= 0 ? "positive" : "negative"}">${money.format(row.profit)}</span>
-              <span>${money.format(row.breakEven)}</span>
+              <span>${money.format(row.revenue)} ${metricDelta(row, previous, "revenue")}</span>
+              <span>${money.format(row.expenses)} ${metricDelta(row, previous, "expenses")}</span>
+              <span>${pct.format(row.cmvRate)} ${rateDelta(row, previous, "cmvRate")}</span>
+              <span>${pct.format(row.peopleRate)} ${rateDelta(row, previous, "peopleRate")}</span>
+              <span>${pct.format(row.occupancyRate)} ${rateDelta(row, previous, "occupancyRate")}</span>
+              <span>${pct.format(row.taxesRate)} ${rateDelta(row, previous, "taxesRate")}</span>
+              <span class="${row.profit >= 0 ? "positive" : "negative"}">${money.format(row.profit)} ${metricDelta(row, previous, "profit")}</span>
+              <span>${money.format(row.breakEven)} ${metricDelta(row, previous, "breakEven")}</span>
               <span class="${row.bankDifference >= 0 ? "positive" : "negative"}">${money.format(row.bankDifference)}</span>
             </div>
           `;

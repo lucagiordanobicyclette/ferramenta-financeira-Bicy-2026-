@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Financeiro La Bicyclette</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-9">
+    <link rel="stylesheet" href="styles.css?v=20260602-1">
   </head>
   <body>
     <header class="topbar">
@@ -109,8 +109,8 @@
           </div>
         </div>
         <div class="history">
-          <p>Abra o importador, selecione os PDFs do mes e gere a analise no proprio navegador. A estrutura separa Barra, Leblon, JB Loja e JB Delivery Filial, mas tambem mostra JB consolidado e Barra + Leblon consolidado.</p>
-          <p>Depois de importar, baixe o pacote do mes para guardar o historico ou comparar com meses anteriores.</p>
+          <p>Para cada mes, envie os PDFs por competencia, os PDFs por caixa e os extratos bancarios pelo importador. A parte superior usa competencia; a conferencia bancaria usa caixa + banco.</p>
+          <p>A estrutura separa Barra, Leblon, JB Loja e JB Delivery Filial, mas tambem mostra JB consolidado e Barra + Leblon consolidado.</p>
         </div>
       </section>
     </main>
@@ -118,7 +118,7 @@
     <script>
       const dashboardMonth = new URLSearchParams(window.location.search).get("month") || "2026-03";
       const dashboardSource = new URLSearchParams(window.location.search).get("source");
-      const dashboardVersion = "20260530-1";
+      const dashboardVersion = "20260602-1";
       function packageKey(month) {
         return `financePackage:${month}`;
       }
@@ -127,6 +127,7 @@
         const raw = localStorage.getItem(packageKey(month));
         if (!raw) return false;
         const payload = JSON.parse(raw);
+        if (payload.importModel !== "competence-cash-v3") return false;
         const hierarchyName = "financeHierarchy" + month.replace("-", "");
         window.financeDataset = payload.dataset;
         window[hierarchyName] = payload.hierarchy || {};

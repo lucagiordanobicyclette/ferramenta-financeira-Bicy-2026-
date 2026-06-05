@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Importar relatorios financeiros</title>
-    <link rel="stylesheet" href="styles.css?v=20260530-1">
+    <link rel="stylesheet" href="styles.css?v=20260602-1">
   </head>
   <body>
     <header class="topbar">
@@ -22,7 +22,7 @@
         <div class="panel-title">
           <div>
             <p class="eyebrow">Novo mes</p>
-            <h2>Selecionar PDFs do Linx e extratos</h2>
+            <h2>Selecionar PDFs de competencia, caixa e extratos</h2>
           </div>
         </div>
 
@@ -32,25 +32,59 @@
             <input name="month" type="month" value="2026-03" required>
           </label>
 
-          <label>
-            Relatorio Barra
-            <input name="report_barra" type="file" accept="application/pdf" required>
-          </label>
+          <div class="upload-group">
+            <div>
+              <p class="eyebrow">Competencia</p>
+              <h3>Relatorios para a analise gerencial</h3>
+            </div>
 
-          <label>
-            Relatorio Leblon
-            <input name="report_leblon" type="file" accept="application/pdf" required>
-          </label>
+            <label>
+              Competencia Barra
+              <input name="competence_report_barra" type="file" accept="application/pdf" required>
+            </label>
 
-          <label>
-            Relatorio JB Loja
-            <input name="report_jb_loja" type="file" accept="application/pdf" required>
-          </label>
+            <label>
+              Competencia Leblon
+              <input name="competence_report_leblon" type="file" accept="application/pdf" required>
+            </label>
 
-          <label>
-            Relatorio JB Delivery Filial
-            <input name="report_jb_delivery" type="file" accept="application/pdf" required>
-          </label>
+            <label>
+              Competencia JB Loja
+              <input name="competence_report_jb_loja" type="file" accept="application/pdf" required>
+            </label>
+
+            <label>
+              Competencia JB Delivery Filial
+              <input name="competence_report_jb_delivery" type="file" accept="application/pdf" required>
+            </label>
+          </div>
+
+          <div class="upload-group">
+            <div>
+              <p class="eyebrow">Caixa</p>
+              <h3>Relatorios para conferencia bancaria</h3>
+            </div>
+
+            <label>
+              Caixa Barra
+              <input name="cash_report_barra" type="file" accept="application/pdf" required>
+            </label>
+
+            <label>
+              Caixa Leblon
+              <input name="cash_report_leblon" type="file" accept="application/pdf" required>
+            </label>
+
+            <label>
+              Caixa JB Loja
+              <input name="cash_report_jb_loja" type="file" accept="application/pdf" required>
+            </label>
+
+            <label>
+              Caixa JB Delivery Filial
+              <input name="cash_report_jb_delivery" type="file" accept="application/pdf" required>
+            </label>
+          </div>
 
           <label>
             Extratos bancarios
@@ -66,7 +100,7 @@
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
-      import { buildFinancePackage } from "./browser-importer.js?v=20260530-2";
+      import { buildFinancePackage } from "./browser-importer.js?v=20260602-1";
 
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -97,18 +131,25 @@
 
         const formData = new FormData(form);
         const month = formData.get("month");
-        const reportFiles = {
-          report_barra: formData.get("report_barra"),
-          report_leblon: formData.get("report_leblon"),
-          report_jb_loja: formData.get("report_jb_loja"),
-          report_jb_delivery: formData.get("report_jb_delivery")
+        const competenceReportFiles = {
+          competence_report_barra: formData.get("competence_report_barra"),
+          competence_report_leblon: formData.get("competence_report_leblon"),
+          competence_report_jb_loja: formData.get("competence_report_jb_loja"),
+          competence_report_jb_delivery: formData.get("competence_report_jb_delivery")
+        };
+        const cashReportFiles = {
+          cash_report_barra: formData.get("cash_report_barra"),
+          cash_report_leblon: formData.get("cash_report_leblon"),
+          cash_report_jb_loja: formData.get("cash_report_jb_loja"),
+          cash_report_jb_delivery: formData.get("cash_report_jb_delivery")
         };
         const bankFiles = formData.getAll("bank_files").filter((file) => file.size > 0);
 
         try {
           const pack = await buildFinancePackage({
             month,
-            reportFiles,
+            competenceReportFiles,
+            cashReportFiles,
             bankFiles,
             pdfjsLib,
             onProgress: (message) => {
