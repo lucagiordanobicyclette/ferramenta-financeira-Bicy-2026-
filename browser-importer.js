@@ -191,6 +191,25 @@ function parseAccounts(text) {
     .map((line, index) => ({ line, index, match: line.match(/^(\d{2,})\s*-\s*(.*)$/) }))
     .filter((item) => item.match);
   const accounts = [];
+  const seenCodes = new Set();
+
+  const pushAccount = ({ code, name, level, revenue, expense, subtotal }) => {
+    const value = code.startsWith("01")
+      ? Math.abs(revenue || subtotal)
+      : Math.abs(expense || subtotal || revenue);
+    if (seenCodes.has(code) || value === 0 || Number.isNaN(value) || !level) return;
+    seenCodes.add(code);
+
+    accounts.push({
+      code,
+      name: cleanName(name || code),
+      level,
+      value: Number(value.toFixed(2)),
+      revenueValue: Number(revenue.toFixed(2)),
+      expenseValue: Number(expense.toFixed(2)),
+      subtotalValue: Number(subtotal.toFixed(2))
+    });
+  };
 
   starts.forEach((start, startIndex) => {
     const code = start.match[1];
@@ -236,17 +255,42 @@ function parseAccounts(text) {
       [expense, subtotal] = [values[0], values[0]];
     }
 
-    const value = Math.abs(expense || subtotal || revenue);
-    if (value === 0 || Number.isNaN(value) || !level) return;
-
-    accounts.push({
+    pushAccount({
       code,
-      name: cleanName(namePart),
+      name: namePart,
       level,
-      value: Number(value.toFixed(2)),
-      revenueValue: Number(revenue.toFixed(2)),
-      expenseValue: Number(expense.toFixed(2)),
-      subtotalValue: Number(subtotal.toFixed(2))
+      revenue,
+      expense,
+      subtotal
+    });
+  });
+
+  lines.forEach((line) => {
+    const match = line.match(/^(0[12]\d*)\s+(.*)$/);
+    if (!match) return;
+    const code = match[1];
+    if (code.length % 2 !== 0 || code.length > 12) return;
+
+    const firstAmount = match[2].match(/-?\s*R\$\s*[\d.]+,\d{2}/);
+    if (!firstAmount) return;
+    const amounts = line.match(/-?\s*R\$\s*[\d.]+,\d{2}/g) || [];
+    if (amounts.length < 2) return;
+    const values = amounts.map(parseMoney);
+    const revenue = values[0] || 0;
+    const expense = values[1] || 0;
+    const subtotal = values[2] || expense || revenue;
+    const name = match[2].slice(0, firstAmount.index)
+      .replace(/\s*%\/SEG.*$/i, "")
+      .replace(/\s*%RT.*$/i, "")
+      .trim() || (code === "0202" ? "Nao operacional" : code);
+
+    pushAccount({
+      code,
+      name,
+      level: code.length / 2,
+      revenue,
+      expense,
+      subtotal
     });
   });
 
@@ -763,4 +807,3 @@ export async function buildFinancePackage({
     hierarchy
   };
 }
- 
