@@ -35,15 +35,15 @@ const GROUP_NAMES = {
 const PACKAGING_PATTERNS = [
   "embalagens",
   "descartaveis",
-  "descartáveis"
+  "descart√°veis"
 ];
 
 const OPERATIONAL_MATERIAL_PATTERNS = [
   "uniformes",
   "utensilios",
-  "utensílios",
+  "utens√≠lios",
   "loucas",
-  "louças",
+  "lou√ßas",
   "limpeza",
   "material operacional",
   "material cestas",
@@ -200,7 +200,7 @@ function parseAccounts(text) {
     const amounts = segment.match(/-?\s*R\$\s*[\d.]+,\d{2}/g) || [];
     const values = amounts.map(parseMoney);
 
-    const inlineLevel = segment.match(/Nível:\s*(\d+)/i);
+    const inlineLevel = segment.match(/N√≠vel:\s*(\d+)/i);
     const levelLine = block.find((line, index) => index > 0 && /^\d+\b/.test(line));
     const trailingLevelLine = block.find((line, index) => {
       if (index === 0 || /R\$/.test(line)) return false;
@@ -214,12 +214,12 @@ function parseAccounts(text) {
     );
 
     let namePart = start.match[2]
-      .replace(/\s*Nível:.*$/i, "")
+      .replace(/\s*N√≠vel:.*$/i, "")
       .replace(/\s*-?\s*R\$\s*[\d.]+,\d{2}.*$/, "")
       .trim();
 
     const continuation = block.find((line, index) => {
-      if (index === 0 || /R\$|Nível:|about:blank|Portal Linx/i.test(line)) return false;
+      if (index === 0 || /R\$|N√≠vel:|about:blank|Portal Linx/i.test(line)) return false;
       if (/^\d+\b/.test(line)) return false;
       return /\D/.test(line);
     });
@@ -455,7 +455,7 @@ function inferBankFile(file, text) {
   const bank = combined.includes("bradesco")
     ? "Bradesco"
     : combined.includes("itau") || combined.includes("minha conta") && combined.includes("minha agencia")
-      ? "Itaú"
+      ? "Ita√∫"
       : "Banco";
 
   let unitId = "";
@@ -625,6 +625,27 @@ function buildUnit(month, unitId, competenceFile, competenceAccounts, cashFile, 
   };
 }
 
+function reportTotals(accounts) {
+  const totals = baseTotals(accounts);
+  return {
+    ...totals,
+    lineCount: accounts.length
+  };
+}
+
+function assertReadableReport(kind, unitId, file, accounts) {
+  const totals = reportTotals(accounts);
+  if (totals.lineCount >= 5 && (totals.revenue > 0 || totals.expenses > 0 || totals.operational > 0)) {
+    return;
+  }
+
+  throw new Error(
+    `Nao consegui ler os valores do PDF de ${kind} de ${UNIT_NAMES[unitId]} (${file.name}). ` +
+    `O arquivo gerou ${totals.lineCount} linhas e totais zerados. ` +
+    "Nada foi salvo; baixe novamente o relatorio do Linx em PDF texto e importe de novo."
+  );
+}
+
 export async function buildFinancePackage({
   month,
   reportFiles,
@@ -663,7 +684,9 @@ export async function buildFinancePackage({
   for (const [fallbackUnitId, file] of competenceEntries) {
     const text = await extractPdfText(file, pdfjsLib);
     const unitId = inferUnitFromDocument(file, text) || fallbackUnitId;
-    competenceData[unitId] = { file, accounts: parseAccounts(text) };
+    const accounts = parseAccounts(text);
+    assertReadableReport("competencia", unitId, file, accounts);
+    competenceData[unitId] = { file, accounts };
     advance(`Lendo competencia: ${SOURCE_LABELS[unitId]}`);
   }
 
@@ -671,7 +694,9 @@ export async function buildFinancePackage({
   for (const [fallbackUnitId, file] of cashEntries) {
     const text = await extractPdfText(file, pdfjsLib);
     const unitId = inferUnitFromDocument(file, text) || fallbackUnitId;
-    cashData[unitId] = { file, accounts: parseAccounts(text) };
+    const accounts = parseAccounts(text);
+    assertReadableReport("caixa", unitId, file, accounts);
+    cashData[unitId] = { file, accounts };
     advance(`Lendo caixa: ${SOURCE_LABELS[unitId]}`);
   }
 
@@ -703,6 +728,14 @@ export async function buildFinancePackage({
     )
   );
 
+  const zeroUnits = units.filter((unit) => unit.revenue <= 0 || unit.expenses <= 0);
+  if (zeroUnits.length) {
+    throw new Error(
+      `A importacao gerou valores zerados para: ${zeroUnits.map((unit) => unit.name).join(", ")}. ` +
+      "Nada foi salvo; confira se os PDFs selecionados sao os relatorios completos por competencia e caixa."
+    );
+  }
+
   const hierarchy = Object.fromEntries(units.map((unit) => [
     unit.id,
     {
@@ -730,3 +763,4 @@ export async function buildFinancePackage({
     hierarchy
   };
 }
+ 
