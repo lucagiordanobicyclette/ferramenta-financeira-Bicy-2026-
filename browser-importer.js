@@ -127,7 +127,15 @@ function inferUnitFromDocument(file, text) {
     return cnpjMatch[0];
   }
 
-  if (content.includes("jardim botanico dlv") || content.includes("delivery filial") || content.includes("43 778 192 0002 55")) {
+  if (
+    content.includes("jardim botanico dlv")
+    || content.includes("delivery filial")
+    || content.includes("la bicyclette delivery ltda")
+    || content.includes("pacheco leao")
+    || content.includes("minha conta99895")
+    || content.includes("cc 99895")
+    || content.includes("43 778 192 0002 55")
+  ) {
     return "jb-delivery";
   }
   if (content.includes("jardim botanico") || content.includes("comercio de paes artesanais") || content.includes("07 633 835 0001 28")) {
@@ -496,6 +504,7 @@ function inferBankFile(file, text) {
   const filename = normalizeText(file.name);
   const combined = normalizeText(`${file.name}\n${text}`);
   const key = combined.replace(/[^a-z0-9]+/g, " ");
+  const digits = onlyDigits(text);
   const bank = combined.includes("bradesco")
     ? "Bradesco"
     : combined.includes("itau") || combined.includes("minha conta") && combined.includes("minha agencia")
@@ -504,22 +513,19 @@ function inferBankFile(file, text) {
 
   let unitId = "";
   let account = file.name.replace(/\.pdf$/i, "");
-  const unitFromCnpj = inferUnitFromDocument(file, text);
+  const unitFromCnpj = Object.entries(UNIT_CNPJS).find(([, cnpj]) => digits.includes(cnpj))?.[0] || "";
   if (unitFromCnpj) {
     unitId = unitFromCnpj;
     account = UNIT_NAMES[unitId];
-  } else if (filename.includes("delivery-filial") || filename.includes("jb-delivery") || key.includes("pacheco leao")) {
+  } else if (
+    filename.includes("delivery filial")
+    || filename.includes("delivery-filial")
+    || filename.includes("jb delivery")
+    || filename.includes("jb-delivery")
+    || key.includes("la bicyclette delivery ltda") && key.includes("pacheco leao")
+  ) {
     unitId = "jb-delivery";
     account = "JB Delivery";
-  } else if (
-    filename.includes("jb-loja")
-    || (filename.includes("jb") && !filename.includes("delivery"))
-    || key.includes("comercio de paes artesanais")
-    || key.includes("com paes artesan")
-    || key.includes("cnpj 007 633 835 0001 28")
-  ) {
-    unitId = "jb-loja";
-    account = "JB Loja";
   } else if (
     filename.includes("leblon")
     || key.includes("ataulfo de paiva")
@@ -539,6 +545,16 @@ function inferBankFile(file, text) {
   ) {
     unitId = "barra";
     account = "Barra";
+  } else if (
+    filename.includes("jb-loja")
+    || (filename.includes("jb") && !filename.includes("delivery"))
+    || filename.includes("la bicyclette")
+    || key.includes("comercio de paes artesanais")
+    || key.includes("com paes artesan")
+    || key.includes("cnpj 007 633 835 0001 28")
+  ) {
+    unitId = "jb-loja";
+    account = "JB Loja";
   } else if (combined.includes("delivery filial") || combined.includes("jb delivery") || combined.includes("jardim botanico - dlv")) {
     unitId = "jb-delivery";
     account = "JB Delivery";
