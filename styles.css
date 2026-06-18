@@ -1240,6 +1240,16 @@ button.metric.active {
   padding: 12px;
 }
 
+.bank-account-list article.bank-account-warning {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.bank-account-list article.bank-account-warning > div:nth-child(2) span {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
 .bank-account-list article > div:first-child {
   display: flex;
   justify-content: space-between;
