@@ -642,7 +642,7 @@ function renderSubcategoryDetails(unit, activeKey, activeColor, rows) {
   const parent = currentDrillParent(unit, activeKey);
   const header = parent ? `
     <button class="drill-back" data-drill-back type="button" aria-label="Voltar">
-      <span aria-hidden="true">←</span>
+      <span aria-hidden="true">‚Üê</span>
       <strong>${parent.name}</strong>
     </button>
   ` : "";
@@ -701,7 +701,7 @@ function renderCostDetails(unit, activeKey, activeColor) {
         <span class="swatch" style="background:${activeColor}"></span>
         <div>
           <strong>${labels[activeKey]}</strong>
-          <small>${money.format(total)} · ${pct.format(percentOfRevenue(unit, total))} do faturamento</small>
+          <small>${money.format(total)} ¬∑ ${pct.format(percentOfRevenue(unit, total))} do faturamento</small>
         </div>
       </div>
       <div class="detail-bars scrollable">
@@ -1022,6 +1022,9 @@ function bankTotals(unit) {
 
 function renderBankReconciliation(unit, units) {
   const totals = bankTotals(unit);
+  const visibleUnitIds = new Set(units.map((item) => item.id));
+  const ignoredBankFiles = (window.financeDataset.ignoredBankFiles || [])
+    .filter((file) => !file.unitId || visibleUnitIds.has(file.unitId));
   const bankVariation = totals.closingBalance - totals.openingBalance;
   const reportCashResult = displayCashResult(unit);
   const difference = bankVariation - reportCashResult;
@@ -1059,7 +1062,7 @@ function renderBankReconciliation(unit, units) {
         <strong>${money.format(totals.credits)}</strong>
       </article>
       <article>
-        <span>Saídas no banco</span>
+        <span>Sa√≠das no banco</span>
         <strong>${money.format(totals.debits)}</strong>
       </article>
       <article>
@@ -1070,17 +1073,17 @@ function renderBankReconciliation(unit, units) {
 
     <div class="bank-compare">
       <div class="bank-step bank-step-bank">
-        <span>Variação bancária</span>
+        <span>Varia√ß√£o banc√°ria</span>
         <strong>${money.format(bankVariation)}</strong>
         <small>Saldo final - saldo inicial</small>
       </div>
       <div class="bank-step bank-step-report">
-        <span>Resultado caixa do relatório de caixa</span>
+        <span>Resultado caixa do relat√≥rio de caixa</span>
         <strong>${money.format(reportCashResult)}</strong>
-        <small>Base separada da análise por competência</small>
+        <small>Base separada da an√°lise por compet√™ncia</small>
       </div>
       <div class="bank-step bank-step-difference ${statusClass}">
-        <span>Diferença a investigar</span>
+        <span>Diferen√ßa a investigar</span>
         <strong class="${statusClass}">${money.format(difference)}</strong>
         <small>${differenceText}</small>
       </div>
@@ -1090,9 +1093,9 @@ function renderBankReconciliation(unit, units) {
       <div class="bank-unit-table">
         <div class="bank-unit-row head">
           <strong>Unidade</strong>
-          <span>Variação banco</span>
+          <span>Varia√ß√£o banco</span>
           <span>Resultado caixa</span>
-          <span>Diferença</span>
+          <span>Diferen√ßa</span>
         </div>
         ${unitRows}
       </div>
@@ -1103,21 +1106,35 @@ function renderBankReconciliation(unit, units) {
         <article>
           <div>
             <strong>${account.bank}</strong>
-            <span>${account.account}</span>
+            <span>Unidade: ${account.unitName || account.account}</span>
           </div>
           <div>
             <span>Inicial ${money.format(account.openingBalance)}</span>
             <span>Entradas ${money.format(account.credits)}</span>
-            <span>Saídas ${money.format(account.debits)}</span>
+            <span>Sa√≠das ${money.format(account.debits)}</span>
             <span>Final ${money.format(account.closingBalance)}</span>
           </div>
+          <p>Arquivo: ${account.source || "extrato importado"}</p>
           ${account.note ? `<p>${account.note}</p>` : ""}
+        </article>
+      `).join("")}
+      ${ignoredBankFiles.map((file) => `
+        <article class="bank-account-warning">
+          <div>
+            <strong>${file.bank || "Banco"}</strong>
+            <span>Unidade: ${file.unitName || "nao identificada"}</span>
+          </div>
+          <div>
+            <span>Extrato nao integrado</span>
+          </div>
+          <p>Arquivo: ${file.source}</p>
+          <p>${file.reason}</p>
         </article>
       `).join("")}
     </div>
 
     <p class="bank-note">
-      A comparação principal usa o resultado do relatório de caixa, com distribuição de lucros dentro das despesas, porque essa retirada também aparece como saída de dinheiro no banco.
+      A compara√ß√£o principal usa o resultado do relat√≥rio de caixa, com distribui√ß√£o de lucros dentro das despesas, porque essa retirada tamb√©m aparece como sa√≠da de dinheiro no banco.
     </p>
   `;
 }
@@ -1331,7 +1348,7 @@ function monthLabel(month) {
 
 const monthElement = document.querySelector("#dashboardMonthLabel");
 if (monthElement) {
-  monthElement.textContent = `${monthLabel(window.financeDataset.months?.[0] || "2026-03")} · Portal Linx Menew`;
+  monthElement.textContent = `${monthLabel(window.financeDataset.months?.[0] || "2026-03")} ¬∑ Portal Linx Menew`;
 }
 
 document.querySelectorAll(".unit-button").forEach((button) => {
