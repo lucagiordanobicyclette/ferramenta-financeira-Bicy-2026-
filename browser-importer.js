@@ -50,13 +50,6 @@ const OPERATIONAL_MATERIAL_PATTERNS = [
   "material de apoio"
 ];
 
-const FIXED_PROFIT_DISTRIBUTION = {
-  barra: 15000,
-  leblon: 15000,
-  "jb-loja": 25000,
-  "jb-delivery": 0
-};
-
 const UNIT_NAMES = {
   barra: "Barra",
   leblon: "Leblon",
@@ -396,18 +389,33 @@ function rowsToDetail(rows, group) {
   }));
 }
 
-function adjustedNonOperationalRows(accounts, unitId) {
-  const rows = categoryRows(accounts, CATEGORY_ROOTS.nonOperational)
-    .filter((row) => cleanName(row.name) !== "Distribuicao De Lucros");
-  const fixedDistribution = FIXED_PROFIT_DISTRIBUTION[unitId] || 0;
-  if (fixedDistribution) {
-    rows.push({
-      code: `fixed-profit-distribution-${unitId}`,
-      name: "Distribuicao De Lucros",
-      value: fixedDistribution
-    });
-  }
-  return rows;
+function isProfitDistributionAccount(account) {
+  const normalized = normalizeText(account.name)
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (
+    account.code === EXTRA_CATEGORY_ROOTS.profitDistribution
+    || normalized.includes("distribuicao de lucro")
+    || normalized.includes("distribuicao lucros")
+    || normalized.includes("distrib lucros")
+    || normalized.includes("dist de lucro")
+    || normalized.includes("dist lucro")
+  );
+}
+
+function parsedProfitDistribution(accounts, byCode) {
+  const byRoot = valueOf(byCode, EXTRA_CATEGORY_ROOTS.profitDistribution);
+  if (byRoot) return byRoot;
+
+  return accounts
+    .filter(isProfitDistributionAccount)
+    .filter((account) => !accounts.some((candidate) =>
+      candidate.code !== account.code
+      && account.code.startsWith(candidate.code)
+      && isProfitDistributionAccount(candidate)
+    ))
+    .reduce((sum, account) => sum + account.value, 0);
 }
 
 function detailRows(accounts, unitId) {
@@ -422,7 +430,6 @@ function detailRows(accounts, unitId) {
       return;
     }
     immediateChildren(accounts, root).forEach((account) => {
-      if (key === "nonOperational" && cleanName(account.name) === "Distribuicao De Lucros") return;
       rows.push({
         group: GROUP_NAMES[key],
         name: account.name,
@@ -441,15 +448,6 @@ function detailRows(accounts, unitId) {
     });
   });
 
-  const fixedDistribution = FIXED_PROFIT_DISTRIBUTION[unitId] || 0;
-  if (fixedDistribution) {
-    rows.push({
-      group: GROUP_NAMES.nonOperational,
-      name: "Distribuicao De Lucros",
-      value: fixedDistribution
-    });
-  }
-
   return rows;
 }
 
@@ -460,9 +458,7 @@ function categoryDetails(accounts, unitId) {
       key,
       key === "cmv"
         ? split.cmv
-        : key === "nonOperational"
-          ? adjustedNonOperationalRows(accounts, unitId)
-          : categoryRows(accounts, root)
+        : categoryRows(accounts, root)
     ])
   );
   details.packaging = split.packaging;
@@ -596,35 +592,8 @@ function baseCategories(accounts) {
   const byCode = accountMap(accounts);
   return {
     ...Object.fromEntries(Object.entries(CATEGORY_ROOTS).map(([key, root]) => [key, valueOf(byCode, root)])),
-    ...Object.fromEntries(Object.entries(EXTRA_CATEGORY_ROOTS).map(([key, root]) => [key, valueOf(byCode, root)]))
-  };
-}
-
-function applyProfitDistribution(unitId, expenses, categories) {
-  const parsedDistribution = categories.profitDistribution || 0;
-  const fixedDistribution = FIXED_PROFIT_DISTRIBUTION[unitId] ?? parsedDistribution;
-  const distributionDelta = fixedDistribution - parsedDistribution;
-  return {
-    expenses: expenses + distributionDelta,
-    categories: {
-      ...categories,
-      profitDistribution: fixedDistribution,
-      nonOperational: (categories.nonOperational || 0) + distributionDelta
-    }
-  };
-}
-
-function normalizedProfitDistributionCategories(unitId, categories) {
-  const parsedDistribution = categories.profitDistribution || 0;
-  const fixedDistribution = FIXED_PROFIT_DISTRIBUTION[unitId] ?? parsedDistribution;
-  if (!fixedDistribution || Math.abs(parsedDistribution - fixedDistribution) < 1) {
-    return categories;
-  }
-  const distributionDelta = fixedDistribution - parsedDistribution;
-  return {
-    ...categories,
-    profitDistribution: fixedDistribution,
-    nonOperational: (categories.nonOperational || 0) + distributionDelta
+    ...Object.fromEntries(Object.entries(EXTRA_CATEGORY_ROOTS).map(([key, root]) => [key, valueOf(byCode, root)])),
+    profitDistribution: parsedProfitDistribution(accounts, byCode)
   };
 }
 
@@ -632,19 +601,16 @@ function buildUnit(month, unitId, competenceFile, competenceAccounts, cashFile, 
   const { revenue, operational } = baseTotals(competenceAccounts);
   const competenceTotals = baseTotals(competenceAccounts);
   const split = splitCmvRows(competenceAccounts);
-  const distributionAdjusted = {
-    expenses: competenceTotals.expenses,
-    categories: normalizedProfitDistributionCategories(unitId, {
-      ...baseCategories(competenceAccounts),
-      cmv: rowTotal(split.cmv),
-      packaging: rowTotal(split.packaging)
-    })
+  const parsedCategories = {
+    ...baseCategories(competenceAccounts),
+    cmv: rowTotal(split.cmv),
+    packaging: rowTotal(split.packaging)
   };
   const categories = {
-    ...distributionAdjusted.categories,
-    operationalMaterial: (distributionAdjusted.categories.operationalMaterial || 0) + rowTotal(split.operationalMaterial)
+    ...parsedCategories,
+    operationalMaterial: (parsedCategories.operationalMaterial || 0) + rowTotal(split.operationalMaterial)
   };
-  const expenses = distributionAdjusted.expenses;
+  const expenses = competenceTotals.expenses;
 
   const cashTotals = baseTotals(cashAccounts || competenceAccounts);
   const cashRevenue = cashTotals.revenue;
