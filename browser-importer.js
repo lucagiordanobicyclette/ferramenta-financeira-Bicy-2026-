@@ -470,15 +470,26 @@ function categoryDetails(accounts, unitId) {
 }
 
 function parseItauBank(text) {
-  const opening = text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$ ([\d.]+,\d{2})/i);
-  const closing = text.match(/saldo em 31\/\d{2}\/\d{2}[\s\S]*?R\$ [\d.]+,\d{2}\s*R\$ ([\d.]+,\d{2})/i);
-  const totals = text.match(/total\s+entradas[\s\S]*?R\$ ([\d.]+,\d{2})\s*R\$ ([\d.]+,\d{2})/i);
-  if (!opening || !closing || !totals) return null;
+  const balancePair = text.match(/saldo em \d{2}\/\d{2}\/\d{2}\s+saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
+  const opening = balancePair?.[1]
+    || text.match(/saldo anterior\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+  const closing = balancePair?.[2]
+    || text.match(/saldo final\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s+R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+  const totalPair = text.match(/total\s*entradas\s+total\s*sa[i√≠]das[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
+  const credits = totalPair?.[1]
+    || text.match(/entradas\s*\(cr[e√©]ditos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/total\s+entradas[\s\S]*?R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+  const debits = totalPair?.[2]
+    || text.match(/sa[i√≠]das\s*\(d[e√©]bitos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/total\s+entradas[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s*R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+  if (!opening || !closing || !credits || !debits) return null;
   return {
-    openingBalance: parseMoney(`R$ ${opening[1]}`),
-    credits: parseMoney(`R$ ${totals[1]}`),
-    debits: parseMoney(`R$ ${totals[2]}`),
-    closingBalance: parseMoney(`R$ ${closing[1]}`)
+    openingBalance: parseMoney(opening),
+    credits: Math.abs(parseMoney(credits)),
+    debits: Math.abs(parseMoney(debits)),
+    closingBalance: parseMoney(closing)
   };
 }
 
@@ -509,58 +520,80 @@ function inferBankFile(file, text) {
 
   let unitId = "";
   let account = file.name.replace(/\.pdf$/i, "");
-  const unitFromCnpj = Object.entries(UNIT_CNPJS).find(([, cnpj]) => digits.includes(cnpj))?.[0] || "";
-  if (unitFromCnpj) {
-    unitId = unitFromCnpj;
-    account = UNIT_NAMES[unitId];
-  } else if (
+
+  if (
     filename.includes("delivery filial")
     || filename.includes("delivery-filial")
     || filename.includes("jb delivery")
     || filename.includes("jb-delivery")
-    || key.includes("la bicyclette delivery ltda") && key.includes("pacheco leao")
+    || filename.includes("delivery jb")
   ) {
     unitId = "jb-delivery";
     account = "JB Delivery";
-  } else if (
-    filename.includes("leblon")
-    || key.includes("ataulfo de paiva")
-    || key.includes("loja b leblon")
-    || key.includes("cnpj 043 778 192 0001 74")
-  ) {
+  } else if (filename.includes("leblon")) {
     unitId = "leblon";
     account = "Leblon";
   } else if (
     filename.includes("barra")
     || filename.includes("boulangerie")
     || filename.includes("bounagerie")
-    || key.includes("erico verissimo")
-    || key.includes("barra da tijuca")
-    || key.includes("boulangerie bicyclette")
-    || key.includes("cnpj 041 265 861 0001 89")
   ) {
     unitId = "barra";
     account = "Barra";
   } else if (
     filename.includes("jb-loja")
+    || filename.includes("jb loja")
     || (filename.includes("jb") && !filename.includes("delivery"))
-    || filename.includes("la bicyclette")
-    || key.includes("comercio de paes artesanais")
-    || key.includes("com paes artesan")
-    || key.includes("cnpj 007 633 835 0001 28")
   ) {
     unitId = "jb-loja";
     account = "JB Loja";
-  } else if (combined.includes("delivery filial") || combined.includes("jb delivery") || combined.includes("jardim botanico - dlv")) {
+  }
+
+  const unitFromCnpj = Object.entries(UNIT_CNPJS).find(([, cnpj]) => digits.includes(cnpj))?.[0] || "";
+  if (!unitId && unitFromCnpj) {
+    unitId = unitFromCnpj;
+    account = UNIT_NAMES[unitId];
+  } else if (
+    !unitId
+    && (key.includes("la bicyclette delivery ltda") && key.includes("pacheco leao"))
+  ) {
     unitId = "jb-delivery";
     account = "JB Delivery";
-  } else if (combined.includes("jb loja") || combined.includes("jardim botanico")) {
-    unitId = "jb-loja";
-    account = "JB Loja";
-  } else if (combined.includes("leblon")) {
+  } else if (
+    !unitId
+    && (key.includes("avenida ataulfo de paiva")
+    || key.includes("loja b leblon")
+    || key.includes("cnpj 043 778 192 0001 74"))
+  ) {
     unitId = "leblon";
     account = "Leblon";
-  } else if (combined.includes("barra") || combined.includes("boulangerie")) {
+  } else if (
+    !unitId
+    && (key.includes("erico verissimo")
+    || key.includes("barra da tijuca")
+    || key.includes("boulangerie bicyclette")
+    || key.includes("cnpj 041 265 861 0001 89"))
+  ) {
+    unitId = "barra";
+    account = "Barra";
+  } else if (
+    !unitId
+    && (key.includes("comercio de paes artesanais")
+    || key.includes("com paes artesan")
+    || key.includes("cnpj 007 633 835 0001 28"))
+  ) {
+    unitId = "jb-loja";
+    account = "JB Loja";
+  } else if (!unitId && (combined.includes("delivery filial") || combined.includes("jb delivery") || combined.includes("jardim botanico - dlv"))) {
+    unitId = "jb-delivery";
+    account = "JB Delivery";
+  } else if (!unitId && (combined.includes("jb loja") || combined.includes("jardim botanico"))) {
+    unitId = "jb-loja";
+    account = "JB Loja";
+  } else if (!unitId && combined.includes("leblon")) {
+    unitId = "leblon";
+    account = "Leblon";
+  } else if (!unitId && (combined.includes("barra") || combined.includes("boulangerie"))) {
     unitId = "barra";
     account = "Barra";
   }
@@ -575,6 +608,8 @@ function parseBankAccount(file, text) {
   return {
     ...parsed,
     bank,
+    unitId,
+    unitName: UNIT_NAMES[unitId],
     account,
     source: file.name
   };
@@ -732,12 +767,23 @@ export async function buildFinancePackage({
   }
 
   const bankAccounts = Object.fromEntries(Object.keys(UNIT_NAMES).map((unitId) => [unitId, []]));
+  const ignoredBankFiles = [];
   for (const file of bankFiles) {
     const text = await extractPdfText(file, pdfjsLib);
     const parsed = parseBankAccount(file, text);
     if (parsed) {
-      const { unitId } = inferBankFile(file, text);
-      bankAccounts[unitId].push(parsed);
+      bankAccounts[parsed.unitId].push(parsed);
+    } else {
+      const inferred = inferBankFile(file, text);
+      ignoredBankFiles.push({
+        source: file.name,
+        bank: inferred.bank,
+        unitId: inferred.unitId,
+        unitName: inferred.unitId ? UNIT_NAMES[inferred.unitId] : "",
+        reason: inferred.unitId
+          ? "Nao consegui ler saldos, entradas e saidas do extrato."
+          : "Nao consegui identificar a unidade do extrato."
+      });
     }
     advance(`Lendo extrato ${file.name}`);
   }
@@ -784,6 +830,7 @@ export async function buildFinancePackage({
         "Conferencia bancaria feita pelos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
         "Ponto de equilibrio estimado com CMV comida, embalagens/descartaveis, impostos e comissoes/tarifas como custos variaveis; motoboy fica em custos fixos."
       ],
+      ignoredBankFiles,
       units
     },
     hierarchy
