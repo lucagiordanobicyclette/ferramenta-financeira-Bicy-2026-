@@ -1423,6 +1423,61 @@ const exportUnitDefinitions = [
   { id: "jb-total", name: "JB Total", unitIds: ["jb-loja", "jb-delivery"] }
 ];
 
+const noteUnitDefinitions = exportUnitDefinitions.filter((definition) => definition.id !== "jb-total");
+
+function notesStorageKey(month = currentPackage().month) {
+  return `financeNotes:${month}`;
+}
+
+function readUnitNotes(month = currentPackage().month) {
+  try {
+    return JSON.parse(localStorage.getItem(notesStorageKey(month)) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeUnitNote(unitId, value, month = currentPackage().month) {
+  const notes = readUnitNotes(month);
+  notes[unitId] = value;
+  localStorage.setItem(notesStorageKey(month), JSON.stringify(notes));
+}
+
+function notesForDefinition(definition, month = currentPackage().month) {
+  const notes = readUnitNotes(month);
+  return definition.unitIds
+    .map((unitId) => notes[unitId])
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function renderUnitNotes() {
+  const container = document.querySelector("#unitNotes");
+  const notes = readUnitNotes();
+  container.innerHTML = `
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Observacoes</p>
+        <h2>Anotacoes por unidade</h2>
+      </div>
+    </div>
+    <div class="unit-notes-grid">
+      ${noteUnitDefinitions.map((definition) => `
+        <label class="unit-note-card">
+          <span>${definition.name}</span>
+          <textarea data-note-unit="${definition.id}" rows="3" placeholder="Escreva aqui pontos de atencao, ajustes ou decisoes do mes...">${escapeHtml(notes[definition.id] || "")}</textarea>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  container.querySelectorAll("[data-note-unit]").forEach((field) => {
+    field.addEventListener("input", () => {
+      writeUnitNote(field.dataset.noteUnit, field.value);
+    });
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1494,10 +1549,18 @@ function buildExcelExportHtml() {
 
   exportUnitDefinitions.forEach((definition) => {
     const templateRows = exportMetricRows(exportView(currentPackage(), definition));
-    templateRows.forEach((template) => {
+    const observationRow = {
+      section: "Observacoes",
+      metric: "Observacao do mes",
+      kind: "text"
+    };
+    [...templateRows, observationRow].forEach((template) => {
       const values = exportMonths.map((_, index) => {
         const pack = [...packagesByMonth.values()].find((item) => monthNumber(item.month) === index + 1);
         if (!pack) return "";
+        if (template.kind === "text") {
+          return notesForDefinition(definition, pack.month);
+        }
         const unit = exportView(pack, definition);
         const metric = exportMetricRows(unit).find((row) => row.section === template.section && row.metric === template.metric);
         return excelValue(metric?.value, template.kind);
@@ -1674,6 +1737,7 @@ function render() {
   renderUnitSummary(units);
   renderHealthBenchmarks(unit);
   renderAccountingNote(unit);
+  renderUnitNotes();
   renderBars(units);
   renderCostMix(unit);
   renderBreakEven(unit);

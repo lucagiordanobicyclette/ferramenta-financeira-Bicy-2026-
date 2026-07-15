@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Financeiro La Bicyclette</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-4">
+    <link rel="stylesheet" href="styles.css?v=20260715-5">
   </head>
   <body>
     <header class="topbar">
@@ -27,6 +27,7 @@
       <section class="unit-summary-grid" id="unitSummary"></section>
       <section class="panel health-panel" id="healthBenchmarks"></section>
       <section class="panel explanation-panel" id="accountingNote"></section>
+      <section class="panel notes-panel" id="unitNotes"></section>
 
       <section class="layout comparison-layout" id="comparisonSection">
         <div class="panel wide comparison-panel">
@@ -120,7 +121,7 @@
       const dashboardMonth = new URLSearchParams(window.location.search).get("month") || "2026-03";
       const dashboardSource = new URLSearchParams(window.location.search).get("source");
       const dashboardRun = new URLSearchParams(window.location.search).get("run");
-      const dashboardVersion = "20260715-4";
+      const dashboardVersion = "20260715-5";
       function packageKey(month) {
         return `financePackage:${month}`;
       }

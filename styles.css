@@ -197,6 +197,47 @@ main {
   font-weight: 800;
 }
 
+.notes-panel {
+  margin-top: 12px;
+}
+
+.unit-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.unit-note-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-soft), #161b24);
+}
+
+.unit-note-card span {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.unit-note-card textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(10, 14, 22, 0.72);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.35;
+}
+
+.unit-note-card textarea::placeholder {
+  color: var(--muted);
+}
+
 .compact-title {
   margin-bottom: 14px;
 }
@@ -1361,6 +1402,7 @@ button.metric.active {
   .summary-grid,
   .unit-summary-grid,
   .health-grid,
+  .unit-notes-grid,
   .note-grid,
   .bank-summary-grid,
   .bank-compare,
