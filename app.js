@@ -1513,97 +1513,181 @@ function excelValue(value, kind = "money") {
   return value;
 }
 
+const exportTableUnitDefinitions = exportUnitDefinitions.filter((definition) => definition.id !== "jb-total");
+
+function exportMonthPackage(packagesByMonth, monthIndex) {
+  return [...packagesByMonth.values()].find((item) => monthNumber(item.month) === monthIndex + 1);
+}
+
 function exportMetricRows(unit) {
   const bank = bankTotals(unit);
   const bankVariation = bank.closingBalance - bank.openingBalance;
   const bankDifference = bankVariation - displayCashResult(unit);
   return [
-    { section: "Competencia", metric: "Faturamento", value: displayRevenue(unit), kind: "money" },
-    { section: "Competencia", metric: "Despesas", value: displayExpenses(unit), kind: "money" },
-    { section: "Competencia", metric: "Lucro liquido", value: displayProfit(unit), kind: "money" },
-    { section: "Competencia", metric: "Margem lucro liquido", value: percentOfRevenue(unit, displayProfit(unit)), kind: "percent" },
-    { section: "Competencia", metric: "CMV", value: healthMetricRate(unit, "cmv"), kind: "percent" },
-    { section: "Competencia", metric: "Pessoal", value: healthMetricRate(unit, "people"), kind: "percent" },
-    { section: "Competencia", metric: "Extras e dobras", value: healthMetricRate(unit, "extras"), kind: "percent" },
-    { section: "Competencia", metric: "Ocupacao", value: healthMetricRate(unit, "occupancy"), kind: "percent" },
-    { section: "Competencia", metric: "Servicos de terceiros", value: healthMetricRate(unit, "thirdParty"), kind: "percent" },
-    { section: "Competencia", metric: "Marketing / redes sociais", value: healthMetricRate(unit, "marketing"), kind: "percent" },
-    { section: "Competencia", metric: "Contas de consumo", value: healthMetricRate(unit, "consumption"), kind: "percent" },
-    { section: "Competencia", metric: "Impostos", value: healthMetricRate(unit, "taxes"), kind: "percent" },
-    { section: "Competencia", metric: "Distribuicao de lucros", value: profitDistribution(unit), kind: "money" },
-    { section: "Competencia", metric: "Ponto de equilibrio", value: breakEven(unit), kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Resultado caixa do relatorio", value: displayCashResult(unit), kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Saldo inicial banco", value: bank.openingBalance, kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Entradas banco", value: bank.credits, kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Saidas banco", value: bank.debits, kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Saldo final banco", value: bank.closingBalance, kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Variacao bancaria", value: bankVariation, kind: "money" },
-    { section: "Caixa / conferencia bancaria", metric: "Diferenca banco vs relatorio", value: bankDifference, kind: "money" }
+    { section: "Competencia", metric: "Receitas Sistema", value: displayRevenue(unit), rate: displayRevenue(unit) > 0 ? 1 : 0, kind: "revenue" },
+    { section: "Competencia", metric: "Despesas Sistema", value: displayExpenses(unit), rate: percentOfRevenue(unit, displayExpenses(unit)), kind: "expense" },
+    { section: "Competencia", metric: "Lucro operacional", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
+    { section: "Competencia", metric: "CMV", value: healthMetricValue(unit, "cmv"), rate: healthMetricRate(unit, "cmv"), kind: "indicator" },
+    { section: "Competencia", metric: "Ocupacao", value: healthMetricValue(unit, "occupancy"), rate: healthMetricRate(unit, "occupancy"), kind: "indicator" },
+    { section: "Competencia", metric: "Pessoal", value: healthMetricValue(unit, "people"), rate: healthMetricRate(unit, "people"), kind: "indicator" },
+    { section: "Competencia", metric: "Extras e dobras", value: healthMetricValue(unit, "extras"), rate: healthMetricRate(unit, "extras"), kind: "indicator" },
+    { section: "Competencia", metric: "Distribuicao de lucros", value: profitDistribution(unit), rate: percentOfRevenue(unit, profitDistribution(unit)), kind: "expense" },
+    { section: "Competencia", metric: "Impostos", value: healthMetricValue(unit, "taxes"), rate: healthMetricRate(unit, "taxes"), kind: "indicator" },
+    { section: "Competencia", metric: "Servicos de terceiros", value: healthMetricValue(unit, "thirdParty"), rate: healthMetricRate(unit, "thirdParty"), kind: "indicator" },
+    { section: "Competencia", metric: "Marketing / redes sociais", value: healthMetricValue(unit, "marketing"), rate: healthMetricRate(unit, "marketing"), kind: "indicator" },
+    { section: "Competencia", metric: "Contas de consumo", value: healthMetricValue(unit, "consumption"), rate: healthMetricRate(unit, "consumption"), kind: "indicator" },
+    { section: "Competencia", metric: "Ponto de equilibrio", value: breakEven(unit), rate: contributionMargin(unit), kind: "neutral" },
+    { section: "Competencia", metric: "Lucro operacional R$", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
+    { section: "Caixa / conferencia bancaria", metric: "Resultado caixa do relatorio", value: displayCashResult(unit), rate: null, kind: "profit" },
+    { section: "Caixa / conferencia bancaria", metric: "Saldo inicial banco", value: bank.openingBalance, rate: null, kind: "bank" },
+    { section: "Caixa / conferencia bancaria", metric: "Entradas banco", value: bank.credits, rate: null, kind: "revenue" },
+    { section: "Caixa / conferencia bancaria", metric: "Saidas banco", value: bank.debits, rate: null, kind: "expense" },
+    { section: "Caixa / conferencia bancaria", metric: "Saldo final banco", value: bank.closingBalance, rate: null, kind: "bank" },
+    { section: "Caixa / conferencia bancaria", metric: "Variacao bancaria", value: bankVariation, rate: null, kind: "bank" },
+    { section: "Caixa / conferencia bancaria", metric: "Diferenca banco vs relatorio", value: bankDifference, rate: null, kind: bankDifference >= 0 ? "positive" : "negative" }
   ];
+}
+
+function exportValueClass(row) {
+  if (row.kind === "revenue" || row.kind === "positive") return "positive";
+  if (row.kind === "expense" || row.kind === "negative") return "negative";
+  if (row.kind === "profit") return row.value < 0 ? "negative" : "profit";
+  return "";
+}
+
+function exportRateClass(row) {
+  if (row.rate === null || row.rate === undefined || row.kind !== "indicator") return "";
+  const benchmark = healthBenchmarks.find((item) => item.label === row.metric || item.key === row.metric);
+  if (!benchmark) return "";
+  return healthStatus(row.rate, benchmark) === "healthy" ? "healthy" : "outside";
+}
+
+function exportMetricCells(packagesByMonth, definition, templateRow) {
+  return exportMonths.map((_, monthIndex) => {
+    const pack = exportMonthPackage(packagesByMonth, monthIndex);
+    if (!pack) return "<td></td><td></td>";
+    const unit = exportView(pack, definition);
+    const row = exportMetricRows(unit).find((item) => item.section === templateRow.section && item.metric === templateRow.metric);
+    if (!row) return "<td></td><td></td>";
+    return `
+      <td class="${exportValueClass(row)}">${escapeHtml(excelValue(row.value, "money"))}</td>
+      <td class="${exportRateClass(row)}">${row.rate === null || row.rate === undefined ? "" : escapeHtml(excelValue(row.rate, "percent"))}</td>
+    `;
+  }).join("");
+}
+
+function exportObservationCells(packagesByMonth, definition) {
+  return exportMonths.map((_, monthIndex) => {
+    const pack = exportMonthPackage(packagesByMonth, monthIndex);
+    const value = pack ? notesForDefinition(definition, pack.month) : "";
+    return `<td colspan="2" class="observation">${escapeHtml(value)}</td>`;
+  }).join("");
+}
+
+function exportUnitTable(packagesByMonth, definition) {
+  const currentRows = exportMetricRows(exportView(currentPackage(), definition));
+  const competenceRows = currentRows.filter((row) => row.section === "Competencia");
+  const bankRows = currentRows.filter((row) => row.section === "Caixa / conferencia bancaria");
+  const columnSpan = 1 + exportMonths.length * 2;
+
+  const header = `
+    <tr><th class="unit-title" colspan="${columnSpan}">${escapeHtml(definition.name)}</th></tr>
+    <tr>
+      <th class="label-header">Indicador</th>
+      ${exportMonths.map((month) => `<th class="month-header" colspan="2">${month}</th>`).join("")}
+    </tr>
+    <tr>
+      <th class="sub-header"></th>
+      ${exportMonths.map(() => `<th class="sub-header">Valor</th><th class="sub-header">% fat.</th>`).join("")}
+    </tr>
+  `;
+
+  const competence = competenceRows.map((row) => `
+    <tr>
+      <td class="row-label">${escapeHtml(row.metric)}</td>
+      ${exportMetricCells(packagesByMonth, definition, row)}
+    </tr>
+  `).join("");
+
+  const bank = `
+    <tr><th class="bank-title" colspan="${columnSpan}">Conferencia bancaria da unidade</th></tr>
+    ${bankRows.map((row) => `
+      <tr>
+        <td class="bank-row-label">${escapeHtml(row.metric)}</td>
+        ${exportMetricCells(packagesByMonth, definition, row)}
+      </tr>
+    `).join("")}
+    <tr>
+      <td class="row-label">Observacoes</td>
+      ${exportObservationCells(packagesByMonth, definition)}
+    </tr>
+  `;
+
+  return `<table>${header}<tbody>${competence}${bank}</tbody></table>`;
+}
+
+function exportGroupBankTable(packagesByMonth) {
+  const definition = views.all;
+  const rows = exportMetricRows(exportView(currentPackage(), definition))
+    .filter((row) => row.section === "Caixa / conferencia bancaria");
+  const columnSpan = 1 + exportMonths.length * 2;
+
+  return `
+    <table>
+      <tr><th class="total-title" colspan="${columnSpan}">Conferencia bancaria total - Grupo</th></tr>
+      <tr>
+        <th class="label-header">Indicador</th>
+        ${exportMonths.map((month) => `<th class="month-header" colspan="2">${month}</th>`).join("")}
+      </tr>
+      <tr>
+        <th class="sub-header"></th>
+        ${exportMonths.map(() => `<th class="sub-header">Valor</th><th class="sub-header">% fat.</th>`).join("")}
+      </tr>
+      <tbody>
+        ${rows.map((row) => `
+          <tr>
+            <td class="bank-row-label">${escapeHtml(row.metric)}</td>
+            ${exportMetricCells(packagesByMonth, definition, row)}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 function buildExcelExportHtml() {
   const packagesByMonth = exportPackagesByMonth();
   const year = currentPackage().month.slice(0, 4);
-  const rows = [];
-
-  exportUnitDefinitions.forEach((definition) => {
-    const templateRows = exportMetricRows(exportView(currentPackage(), definition));
-    const observationRow = {
-      section: "Observacoes",
-      metric: "Observacao do mes",
-      kind: "text"
-    };
-    [...templateRows, observationRow].forEach((template) => {
-      const values = exportMonths.map((_, index) => {
-        const pack = [...packagesByMonth.values()].find((item) => monthNumber(item.month) === index + 1);
-        if (!pack) return "";
-        if (template.kind === "text") {
-          return notesForDefinition(definition, pack.month);
-        }
-        const unit = exportView(pack, definition);
-        const metric = exportMetricRows(unit).find((row) => row.section === template.section && row.metric === template.metric);
-        return excelValue(metric?.value, template.kind);
-      });
-      rows.push({ unit: definition.name, section: template.section, metric: template.metric, values });
-    });
-  });
-
-  const rowHtml = rows.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.unit)}</td>
-      <td>${escapeHtml(row.section)}</td>
-      <td>${escapeHtml(row.metric)}</td>
-      ${row.values.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
-    </tr>
-  `).join("");
+  const tables = [
+    ...exportTableUnitDefinitions.map((definition) => exportUnitTable(packagesByMonth, definition)),
+    exportGroupBankTable(packagesByMonth)
+  ].join("");
 
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; }
-    table { border-collapse: collapse; }
-    th { background: #d8bd58; color: #111827; font-weight: 700; }
-    td, th { border: 1px solid #9ca3af; padding: 6px 8px; white-space: nowrap; }
-    td:nth-child(2) { background: #eef2f7; font-weight: 700; }
-    td:nth-child(1) { font-weight: 700; }
+    body { font-family: Arial, sans-serif; color: #111827; }
+    h1 { font-size: 26px; margin: 0 0 16px; }
+    table { border-collapse: collapse; margin: 0 0 28px; }
+    td, th { border: 1px solid #a8a8a8; padding: 7px 9px; white-space: nowrap; min-width: 92px; }
+    .unit-title, .total-title { background: #101318; color: #ffffff; font-size: 18px; text-align: left; }
+    .total-title { background: #16315f; }
+    .label-header, .month-header { background: #d8bd58; color: #111827; font-weight: 700; text-align: center; }
+    .sub-header { background: #f2e6ae; color: #111827; font-size: 12px; text-align: center; }
+    .row-label { background: #d9d9d9; color: #111827; font-weight: 700; min-width: 230px; }
+    .bank-title { background: #1d3a70; color: #ffffff; text-align: left; }
+    .bank-row-label { background: #dbeafe; color: #111827; font-weight: 700; min-width: 230px; }
+    .observation { background: #fff7cc; color: #111827; white-space: normal; min-width: 150px; }
+    .positive, .healthy { color: #116329; font-weight: 700; }
+    .negative, .outside { color: #b42318; font-weight: 700; }
+    .profit { color: #1d4ed8; font-weight: 700; }
   </style>
 </head>
 <body>
   <h1>Financeiro La Bicyclette ${escapeHtml(year)}</h1>
-  <table>
-    <thead>
-      <tr>
-        <th>Unidade</th>
-        <th>Bloco</th>
-        <th>Indicador</th>
-        ${exportMonths.map((month) => `<th>${month}</th>`).join("")}
-      </tr>
-    </thead>
-    <tbody>${rowHtml}</tbody>
-  </table>
+  ${tables}
 </body>
 </html>`;
 }
