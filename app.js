@@ -54,15 +54,15 @@ const accountNameOverrides = {
 };
 
 const healthBenchmarks = [
-  { key: "cmv", label: "CMV", min: 0.30, max: 0.40, color: palette[0] },
-  { key: "occupancy", label: "Ocupacao", min: 0.05, max: 0.10, color: palette[2] },
-  { key: "people", label: "Pessoal", min: 0.20, max: 0.30, color: palette[1] },
+  { key: "cmv", label: "CMV", min: 0.30, max: 0.40, color: palette[0], direction: "cost" },
+  { key: "occupancy", label: "Ocupacao", min: 0.05, max: 0.10, color: palette[2], direction: "cost" },
+  { key: "people", label: "Pessoal", min: 0.20, max: 0.30, color: palette[1], direction: "cost" },
   { key: "extras", label: "Extras e dobras", subLabel: "subcategoria de Pessoal", min: null, max: null, color: "#8fb2ff", reminder: "falta definir faixa saudavel" },
   { key: "thirdParty", label: "Servicos de terceiros", min: null, max: null, color: palette[5], reminder: "falta definir faixa saudavel" },
-  { key: "marketing", label: "Marketing / redes sociais", min: 0.01, max: 0.05, color: "#f08a55" },
-  { key: "consumption", label: "Contas de consumo", min: 0.03, max: 0.08, color: "#39c5c8" },
-  { key: "taxes", label: "Impostos", min: 0.04, max: 0.10, color: palette[3] },
-  { key: "netProfit", label: "Lucro liquido", min: 0.10, max: 0.15, color: "#7bd88f", inverse: false }
+  { key: "marketing", label: "Marketing / redes sociais", min: 0.01, max: 0.05, color: "#f08a55", direction: "cost" },
+  { key: "consumption", label: "Contas de consumo", min: 0.03, max: 0.08, color: "#39c5c8", direction: "cost" },
+  { key: "taxes", label: "Impostos", min: 0.04, max: 0.10, color: palette[3], direction: "cost" },
+  { key: "netProfit", label: "Lucro liquido", min: 0.10, max: 0.15, color: "#7bd88f", direction: "profit" }
 ];
 
 const state = {
@@ -145,8 +145,33 @@ function detailValue(unit, groups, patterns) {
     .reduce((sum, item) => sum + item.value, 0);
 }
 
+function treeValueByPattern(rows, patterns) {
+  const normalizedPatterns = patterns.map(normalizedText);
+  const visit = (row) => {
+    const name = normalizedText(row.name || "");
+    if (normalizedPatterns.some((pattern) => name.includes(pattern))) {
+      return row.value || 0;
+    }
+    return (row.children || []).reduce((sum, child) => sum + visit(child), 0);
+  };
+  return (rows || []).reduce((sum, row) => sum + visit(row), 0);
+}
+
+function treeHasPattern(rows, patterns) {
+  const normalizedPatterns = patterns.map(normalizedText);
+  return flattenRows(rows || [])
+    .some((row) => {
+      const name = normalizedText(row.name || "");
+      return normalizedPatterns.some((pattern) => name.includes(pattern));
+    });
+}
+
 function extrasAndOvertimeCost(unit) {
-  return detailValue(unit, ["Pessoal"], ["extra", "extras", "dobra", "dobras", "hora extra", "horas extras"]);
+  const patterns = ["extra", "extras", "dobra", "dobras", "hora extra", "horas extras"];
+  return Math.max(
+    detailValue(unit, ["Pessoal"], patterns),
+    treeValueByPattern(unit.categoryDetails?.people, patterns)
+  );
 }
 
 function consumptionCost(unit) {
@@ -186,7 +211,10 @@ function healthMetricRate(unit, key) {
 
 function healthStatus(rate, benchmark) {
   if (benchmark.min === null || benchmark.max === null) return "pending";
-  return rate >= benchmark.min && rate <= benchmark.max ? "healthy" : "outside";
+  if (benchmark.direction === "profit") {
+    return rate >= benchmark.min ? "healthy" : "outside";
+  }
+  return rate <= benchmark.max ? "healthy" : "outside";
 }
 
 function variableCostRows(unit) {
@@ -467,6 +495,16 @@ function currentPackage() {
 
 function downloadJson(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1376,6 +1414,142 @@ function renderSparkCard(rows, key, label, color) {
   `;
 }
 
+const exportMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const exportUnitDefinitions = [
+  { id: "barra", name: "Barra", unitIds: ["barra"] },
+  { id: "leblon", name: "Leblon", unitIds: ["leblon"] },
+  { id: "jb-loja", name: "JB Loja", unitIds: ["jb-loja"] },
+  { id: "jb-delivery", name: "JB Delivery", unitIds: ["jb-delivery"] },
+  { id: "jb-total", name: "JB Total", unitIds: ["jb-loja", "jb-delivery"] }
+];
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function exportPackagesByMonth() {
+  return [...state.comparisonPackages, currentPackage()]
+    .filter((pack) => pack?.type === "la-bicyclette-financeiro")
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .reduce((map, pack) => {
+      map.set(pack.month, pack);
+      return map;
+    }, new Map());
+}
+
+function exportView(pack, definition) {
+  const units = (pack.dataset?.units || []).filter((unit) => definition.unitIds.includes(unit.id));
+  if (units.length === 1) return units[0];
+  return combineUnits(definition.id, definition.name, units);
+}
+
+function monthNumber(month) {
+  return Number(String(month || "").split("-")[1] || 0);
+}
+
+function excelValue(value, kind = "money") {
+  if (value === "" || value === null || value === undefined || Number.isNaN(value)) return "";
+  if (kind === "percent") return pct.format(value);
+  if (kind === "money") return money.format(value);
+  return value;
+}
+
+function exportMetricRows(unit) {
+  const bank = bankTotals(unit);
+  const bankVariation = bank.closingBalance - bank.openingBalance;
+  const bankDifference = bankVariation - displayCashResult(unit);
+  return [
+    { section: "Competencia", metric: "Faturamento", value: displayRevenue(unit), kind: "money" },
+    { section: "Competencia", metric: "Despesas", value: displayExpenses(unit), kind: "money" },
+    { section: "Competencia", metric: "Lucro liquido", value: displayProfit(unit), kind: "money" },
+    { section: "Competencia", metric: "Margem lucro liquido", value: percentOfRevenue(unit, displayProfit(unit)), kind: "percent" },
+    { section: "Competencia", metric: "CMV", value: healthMetricRate(unit, "cmv"), kind: "percent" },
+    { section: "Competencia", metric: "Pessoal", value: healthMetricRate(unit, "people"), kind: "percent" },
+    { section: "Competencia", metric: "Extras e dobras", value: healthMetricRate(unit, "extras"), kind: "percent" },
+    { section: "Competencia", metric: "Ocupacao", value: healthMetricRate(unit, "occupancy"), kind: "percent" },
+    { section: "Competencia", metric: "Servicos de terceiros", value: healthMetricRate(unit, "thirdParty"), kind: "percent" },
+    { section: "Competencia", metric: "Marketing / redes sociais", value: healthMetricRate(unit, "marketing"), kind: "percent" },
+    { section: "Competencia", metric: "Contas de consumo", value: healthMetricRate(unit, "consumption"), kind: "percent" },
+    { section: "Competencia", metric: "Impostos", value: healthMetricRate(unit, "taxes"), kind: "percent" },
+    { section: "Competencia", metric: "Distribuicao de lucros", value: profitDistribution(unit), kind: "money" },
+    { section: "Competencia", metric: "Ponto de equilibrio", value: breakEven(unit), kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Resultado caixa do relatorio", value: displayCashResult(unit), kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Saldo inicial banco", value: bank.openingBalance, kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Entradas banco", value: bank.credits, kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Saidas banco", value: bank.debits, kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Saldo final banco", value: bank.closingBalance, kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Variacao bancaria", value: bankVariation, kind: "money" },
+    { section: "Caixa / conferencia bancaria", metric: "Diferenca banco vs relatorio", value: bankDifference, kind: "money" }
+  ];
+}
+
+function buildExcelExportHtml() {
+  const packagesByMonth = exportPackagesByMonth();
+  const year = currentPackage().month.slice(0, 4);
+  const rows = [];
+
+  exportUnitDefinitions.forEach((definition) => {
+    const templateRows = exportMetricRows(exportView(currentPackage(), definition));
+    templateRows.forEach((template) => {
+      const values = exportMonths.map((_, index) => {
+        const pack = [...packagesByMonth.values()].find((item) => monthNumber(item.month) === index + 1);
+        if (!pack) return "";
+        const unit = exportView(pack, definition);
+        const metric = exportMetricRows(unit).find((row) => row.section === template.section && row.metric === template.metric);
+        return excelValue(metric?.value, template.kind);
+      });
+      rows.push({ unit: definition.name, section: template.section, metric: template.metric, values });
+    });
+  });
+
+  const rowHtml = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.unit)}</td>
+      <td>${escapeHtml(row.section)}</td>
+      <td>${escapeHtml(row.metric)}</td>
+      ${row.values.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
+    </tr>
+  `).join("");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; }
+    table { border-collapse: collapse; }
+    th { background: #d8bd58; color: #111827; font-weight: 700; }
+    td, th { border: 1px solid #9ca3af; padding: 6px 8px; white-space: nowrap; }
+    td:nth-child(2) { background: #eef2f7; font-weight: 700; }
+    td:nth-child(1) { font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>Financeiro La Bicyclette ${escapeHtml(year)}</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Unidade</th>
+        <th>Bloco</th>
+        <th>Indicador</th>
+        ${exportMonths.map((month) => `<th>${month}</th>`).join("")}
+      </tr>
+    </thead>
+    <tbody>${rowHtml}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
+function exportExcelTable() {
+  const year = currentPackage().month.slice(0, 4);
+  downloadBlob(`financeiro-la-bicyclette-${year}.xls`, buildExcelExportHtml(), "application/vnd.ms-excel;charset=utf-8");
+}
+
 function renderEvolution() {
   const container = document.querySelector("#evolution");
   const definition = currentDefinition();
@@ -1415,6 +1589,7 @@ function renderEvolution() {
   container.innerHTML = `
     <div class="evolution-actions">
       <button class="unit-button active" id="exportPackage" type="button">Exportar pacote do mes</button>
+      <button class="unit-button" id="exportExcelTable" type="button">Exportar em tabela Excel</button>
       <label class="unit-button import-package">
         Importar meses anteriores
         <input id="importPackages" type="file" accept=".json,.financeiro.json,application/json" multiple>
@@ -1463,6 +1638,10 @@ function renderEvolution() {
   document.querySelector("#exportPackage")?.addEventListener("click", () => {
     const pack = currentPackage();
     downloadJson(`${pack.month}.financeiro.json`, pack);
+  });
+
+  document.querySelector("#exportExcelTable")?.addEventListener("click", () => {
+    exportExcelTable();
   });
 
   document.querySelector("#importPackages")?.addEventListener("change", async (event) => {

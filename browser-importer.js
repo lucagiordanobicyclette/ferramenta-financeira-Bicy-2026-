@@ -651,20 +651,34 @@ function categoryDetails(accounts, unitId) {
 }
 
 function parseItauBank(text) {
-  const balancePair = text.match(/saldo em \d{2}\/\d{2}\/\d{2}\s+saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
+  const compactText = text
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n+/g, "\n");
+  const moneyPattern = "R?\\$?\\s*(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2})";
+  const moneyRegex = new RegExp(moneyPattern, "gi");
+  const moneyNear = (pattern, pick = "first") => {
+    const match = compactText.match(pattern);
+    if (!match) return "";
+    const values = [...match[0].matchAll(new RegExp(moneyPattern, "gi"))].map((item) => item[1]);
+    return pick === "last" ? values.at(-1) || "" : values[0] || "";
+  };
+  const balancePair = compactText.match(new RegExp(`saldo em \\d{2}\\/\\d{2}\\/\\d{2}\\s+saldo em \\d{2}\\/\\d{2}\\/\\d{2}[\\s\\S]*?${moneyPattern}\\s+${moneyPattern}`, "i"));
   const opening = balancePair?.[1]
-    || text.match(/saldo anterior\s+(-?[\d.]+,\d{2})/i)?.[1]
-    || text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+    || compactText.match(new RegExp(`saldo anterior[\\s\\S]{0,120}?${moneyPattern}`, "i"))?.[1]
+    || compactText.match(new RegExp(`saldo em \\d{2}\\/\\d{2}\\/\\d{2}[\\s\\S]{0,120}?${moneyPattern}`, "i"))?.[1];
   const closing = balancePair?.[2]
-    || text.match(/saldo final\s+(-?[\d.]+,\d{2})/i)?.[1]
-    || text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s+R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
-  const totalPair = text.match(/total\s*entradas\s+total\s*sa[ií]das[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
+    || compactText.match(new RegExp(`saldo final[\\s\\S]{0,120}?${moneyPattern}`, "i"))?.[1]
+    || moneyNear(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]{0,220}/i, "last");
+  const totalPair = compactText.match(new RegExp(`total\\s*entradas\\s+total\\s*sa[ií]das[\\s\\S]*?${moneyPattern}\\s+${moneyPattern}`, "i"));
   const credits = totalPair?.[1]
-    || text.match(/entradas\s*\(cr[eé]ditos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
-    || text.match(/total\s+entradas[\s\S]*?R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+    || moneyNear(/entradas\s*\(cr[eé]ditos\)[\s\S]{0,500}?\btotal[\s\S]{0,120}/i, "last")
+    || moneyNear(/total\s+(?:de\s+)?entradas[\s\S]{0,160}/i)
+    || moneyNear(/entradas[\s\S]{0,120}/i, "last");
   const debits = totalPair?.[2]
-    || text.match(/sa[ií]das\s*\(d[eé]bitos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
-    || text.match(/total\s+entradas[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s*R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
+    || moneyNear(/sa[ií]das\s*\(d[eé]bitos\)[\s\S]{0,500}?\btotal[\s\S]{0,120}/i, "last")
+    || moneyNear(/total\s+(?:de\s+)?sa[ií]das[\s\S]{0,160}/i)
+    || moneyNear(/sa[ií]das[\s\S]{0,120}/i, "last");
   if (!opening || !closing || !credits || !debits) return null;
   return {
     openingBalance: parseMoney(opening),
