@@ -356,6 +356,130 @@ async function extractSpreadsheetText(file, onProgress) {
   return lines.join("\n");
 }
 
+function numberFromCell(value) {
+  if (typeof value === "number") return value;
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  let cleaned = raw
+    .replace(/\u00a0/g, " ")
+    .replace(/R\$/gi, "")
+    .replace(/\s+/g, "");
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  if (lastComma >= 0 && lastDot >= 0) {
+    cleaned = lastComma > lastDot
+      ? cleaned.replace(/\./g, "").replace(",", ".")
+      : cleaned.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    cleaned = cleaned.replace(",", ".");
+  }
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeTransferName(value) {
+  return normalizeText(String(value || "")).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function parseTransferFile(file, onProgress) {
+  const XLSX = await loadSheetJs();
+  onProgress?.(`Lendo transferencias: ${file.name}`);
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: "array", cellDates: false });
+  const items = [];
+  let activeDocument = null;
+
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+    rows.forEach((row) => {
+      const first = String(row[0] || "").trim();
+      if (/^pt-/i.test(first)) {
+        activeDocument = {
+          document: first,
+          date: row[2] || "",
+          origin: row[3] || "",
+          destination: row[4] || ""
+        };
+        return;
+      }
+
+      if (!activeDocument || !row[1] || !row[2] || normalizeText(row[1]).includes("codigo")) {
+        return;
+      }
+
+      const origin = normalizeTransferName(activeDocument.origin);
+      const destination = normalizeTransferName(activeDocument.destination);
+      const isBarraToLeblon = (
+        origin.includes("barra")
+        || origin.includes("boulangerie")
+      ) && destination.includes("leblon");
+      if (!isBarraToLeblon) {
+        return;
+      }
+
+      const quantity = numberFromCell(row[3]);
+      const unitCost = numberFromCell(row[6]);
+      const totalCost = numberFromCell(row[7]) || quantity * unitCost;
+      if (!totalCost) {
+        return;
+      }
+
+      items.push({
+        source: file.name,
+        document: activeDocument.document,
+        date: activeDocument.date,
+        productCode: String(row[1] || "").trim(),
+        product: String(row[2] || "").trim(),
+        quantity: Number(quantity.toFixed(3)),
+        unitCost: Number(unitCost.toFixed(4)),
+        totalCost: Number(totalCost.toFixed(2))
+      });
+    });
+  });
+
+  const productMap = new Map();
+  items.forEach((item) => {
+    const key = item.productCode || item.product;
+    const current = productMap.get(key) || {
+      productCode: item.productCode,
+      product: item.product,
+      quantity: 0,
+      totalCost: 0
+    };
+    current.quantity += item.quantity;
+    current.totalCost += item.totalCost;
+    productMap.set(key, current);
+  });
+
+  return {
+    source: file.name,
+    fromUnitId: "barra",
+    toUnitId: "leblon",
+    description: "Transferencias de mercadorias produzidas na Barra para venda no Leblon",
+    totalCost: Number(items.reduce((sum, item) => sum + item.totalCost, 0).toFixed(2)),
+    items,
+    products: [...productMap.values()]
+      .map((item) => ({
+        ...item,
+        quantity: Number(item.quantity.toFixed(3)),
+        totalCost: Number(item.totalCost.toFixed(2))
+      }))
+      .sort((a, b) => b.totalCost - a.totalCost)
+  };
+}
+
+async function parseTransferFiles(files, onProgress) {
+  const parsed = [];
+  for (const file of files || []) {
+    if (!isSpreadsheetFile(file)) continue;
+    const transfer = await parseTransferFile(file, onProgress);
+    if (transfer.totalCost > 0) parsed.push(transfer);
+  }
+  return parsed;
+}
+
 async function extractReportText(file, pdfjsLib, onProgress) {
   if (isSpreadsheetFile(file)) return extractSpreadsheetText(file, onProgress);
   if (isPdfFile(file)) return extractPdfText(file, pdfjsLib, onProgress);
@@ -881,6 +1005,66 @@ function buildUnit(month, unitId, competenceFile, competenceAccounts, cashFile, 
   };
 }
 
+function upsertDetailRow(rows, group, name, value) {
+  const current = rows.find((row) => row.group === group && row.name === name);
+  if (current) {
+    current.value = Number((current.value + value).toFixed(2));
+  } else if (value > 0) {
+    rows.push({ group, name, value: Number(value.toFixed(2)) });
+  }
+}
+
+function addCategoryDetail(unit, categoryKey, row) {
+  unit.categoryDetails[categoryKey] = unit.categoryDetails[categoryKey] || [];
+  unit.categoryDetails[categoryKey].push(row);
+}
+
+function applyTransferAdjustments(units, transfers) {
+  const total = transfers.reduce((sum, transfer) => sum + transfer.totalCost, 0);
+  if (!total) return;
+
+  const from = units.find((unit) => unit.id === "barra");
+  const to = units.find((unit) => unit.id === "leblon");
+  if (!from || !to) return;
+
+  const transferRows = transfers.flatMap((transfer) =>
+    transfer.products.slice(0, 30).map((product) => ({
+      code: `transfer-${product.productCode || product.product}`,
+      name: product.product,
+      value: product.totalCost
+    }))
+  );
+
+  const fromAdjustment = {
+    code: "transfer-barra-leblon",
+    name: "Ajuste transferencia para Leblon",
+    value: -Number(total.toFixed(2)),
+    children: transferRows.map((row) => ({ ...row, value: -row.value }))
+  };
+  const toAdjustment = {
+    code: "transfer-barra-leblon",
+    name: "Mercadorias transferidas da Barra",
+    value: Number(total.toFixed(2)),
+    children: transferRows
+  };
+
+  from.categories.cmv = Number(((from.categories.cmv || 0) - total).toFixed(2));
+  to.categories.cmv = Number(((to.categories.cmv || 0) + total).toFixed(2));
+  from.variableItems.cmv = Number(((from.variableItems.cmv || 0) - total).toFixed(2));
+  to.variableItems.cmv = Number(((to.variableItems.cmv || 0) + total).toFixed(2));
+  from.expenses = Number((from.expenses - total).toFixed(2));
+  to.expenses = Number((to.expenses + total).toFixed(2));
+  from.operationalExpenses = Number((from.operationalExpenses - total).toFixed(2));
+  to.operationalExpenses = Number((to.operationalExpenses + total).toFixed(2));
+  from.realProfit = Number((from.revenue - from.expenses).toFixed(2));
+  to.realProfit = Number((to.revenue - to.expenses).toFixed(2));
+
+  upsertDetailRow(from.detail, GROUP_NAMES.cmv, "Ajuste transferencia para Leblon", -total);
+  upsertDetailRow(to.detail, GROUP_NAMES.cmv, "Mercadorias transferidas da Barra", total);
+  addCategoryDetail(from, "cmv", fromAdjustment);
+  addCategoryDetail(to, "cmv", toAdjustment);
+}
+
 function reportTotals(accounts) {
   const totals = baseTotals(accounts);
   return {
@@ -908,6 +1092,7 @@ export async function buildFinancePackage({
   competenceReportFiles,
   cashReportFiles,
   bankFiles,
+  transferFiles = [],
   pdfjsLib,
   onProgress
 }) {
@@ -929,7 +1114,7 @@ export async function buildFinancePackage({
     throw new Error(`Faltam arquivos obrigatorios: ${missing.join(", ")}`);
   }
 
-  const totalSteps = competenceEntries.length + cashEntries.length + bankFiles.length;
+  const totalSteps = competenceEntries.length + cashEntries.length + bankFiles.length + transferFiles.length;
   let step = 0;
   const advance = (message) => {
     step += 1;
@@ -991,6 +1176,11 @@ export async function buildFinancePackage({
     advance(`Lendo extrato ${file.name}`);
   }
 
+  const transferAdjustments = await parseTransferFiles(transferFiles, onProgress);
+  transferAdjustments.forEach((transfer) => {
+    advance(`Lendo transferencia ${transfer.source}`);
+  });
+
   const units = Object.keys(UNIT_NAMES).map((unitId) =>
     buildUnit(
       month,
@@ -1002,6 +1192,7 @@ export async function buildFinancePackage({
       bankAccounts
     )
   );
+  applyTransferAdjustments(units, transferAdjustments);
 
   const zeroUnits = units.filter((unit) => unit.revenue <= 0 || unit.expenses <= 0);
   if (zeroUnits.length) {
@@ -1031,9 +1222,11 @@ export async function buildFinancePackage({
         "Importacao feita no navegador a partir dos PDFs selecionados.",
         "Analise gerencial da parte superior feita pelos relatorios de competencia.",
         "Conferencia bancaria feita pelos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
+        "Transferencias Barra para Leblon ajustam CMV: reduzem CMV/despesas da Barra e aumentam CMV/despesas do Leblon pelo custo total transferido.",
         "Ponto de equilibrio estimado com CMV, impostos e comissoes/tarifas como custos variaveis; CMV inclui comida, embalagens e descartaveis. Motoboy fica em custos fixos."
       ],
       ignoredBankFiles,
+      transferAdjustments,
       units
     },
     hierarchy

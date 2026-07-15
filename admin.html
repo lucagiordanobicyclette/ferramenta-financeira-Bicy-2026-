@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Importar relatorios financeiros</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-5">
+    <link rel="stylesheet" href="styles.css?v=20260715-6">
   </head>
   <body>
     <header class="topbar">
@@ -91,6 +91,11 @@
             <input name="bank_files" type="file" accept="application/pdf" multiple>
           </label>
 
+          <label>
+            Transferencias Barra para Leblon (Excel)
+            <input name="transfer_files" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" multiple>
+          </label>
+
           <button class="unit-button active upload-submit" type="submit">Importar mes</button>
         </form>
 
@@ -100,7 +105,7 @@
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
-      import { buildFinancePackage } from "./browser-importer.js?v=20260715-5";
+      import { buildFinancePackage } from "./browser-importer.js?v=20260715-6";
 
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -157,6 +162,7 @@
           cash_report_jb_delivery: formData.get("cash_report_jb_delivery")
         };
         const bankFiles = formData.getAll("bank_files").filter((file) => file.size > 0);
+        const transferFiles = formData.getAll("transfer_files").filter((file) => file.size > 0);
 
         try {
           const pack = await buildFinancePackage({
@@ -164,6 +170,7 @@
             competenceReportFiles,
             cashReportFiles,
             bankFiles,
+            transferFiles,
             pdfjsLib,
             onProgress: (message) => {
               result.textContent = message;
