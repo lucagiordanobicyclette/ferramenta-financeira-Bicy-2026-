@@ -14,7 +14,7 @@ const labels = {
   expenses: "Despesas",
   operationalExpenses: "Despesas operacionais",
   realProfit: "Lucro real",
-  cmv: "CMV comida",
+  cmv: "CMV",
   packaging: "Embalagens/descartaveis",
   taxes: "Impostos",
   people: "Pessoal",
@@ -31,6 +31,39 @@ const labels = {
 const palette = ["#3fd18b", "#5f9cff", "#f2b84b", "#f26d5b", "#39c5c8", "#a887ff", "#f08a55", "#aab4c3"];
 const neutral = "#d7dce0";
 const variableCostKeys = ["cmv", "packaging", "taxes", "commissions"];
+
+const accountNameOverrides = {
+  "01": "Receitas",
+  "0101": "Receita operacional",
+  "0102": "Receita nao operacional",
+  "02": "Despesas",
+  "0201": "Despesas operacionais",
+  "020101": "Tarifas bancarias e taxas",
+  "020102": "Impostos",
+  "020104": "CMV",
+  "020105": "Despesas pessoal",
+  "020106": "Ocupacao",
+  "020107": "Servicos de terceiros",
+  "020108": "Publicidade",
+  "020109": "Uso e consumo",
+  "020110": "Material operacional",
+  "020113": "Legal / taxas",
+  "0202": "Nao operacional",
+  "020201": "Investimentos",
+  "020202": "Distribuicao de lucros"
+};
+
+const healthBenchmarks = [
+  { key: "cmv", label: "CMV", min: 0.30, max: 0.40, color: palette[0] },
+  { key: "occupancy", label: "Ocupacao", min: 0.05, max: 0.10, color: palette[2] },
+  { key: "people", label: "Pessoal", min: 0.20, max: 0.30, color: palette[1] },
+  { key: "extras", label: "Extras e dobras", subLabel: "subcategoria de Pessoal", min: null, max: null, color: "#8fb2ff", reminder: "falta definir faixa saudavel" },
+  { key: "thirdParty", label: "Servicos de terceiros", min: null, max: null, color: palette[5], reminder: "falta definir faixa saudavel" },
+  { key: "marketing", label: "Marketing / redes sociais", min: 0.01, max: 0.05, color: "#f08a55" },
+  { key: "consumption", label: "Contas de consumo", min: 0.03, max: 0.08, color: "#39c5c8" },
+  { key: "taxes", label: "Impostos", min: 0.04, max: 0.10, color: palette[3] },
+  { key: "netProfit", label: "Lucro liquido", min: 0.10, max: 0.15, color: "#7bd88f", inverse: false }
+];
 
 const state = {
   selected: "all",
@@ -99,6 +132,61 @@ function displayCashResult(unit) {
 
 function fixedCost(unit) {
   return unit.operationalExpenses - variableCost(unit);
+}
+
+function detailValue(unit, groups, patterns) {
+  const normalizedPatterns = patterns.map(normalizedText);
+  return (unit.detail || [])
+    .filter((item) => groups.includes(item.group))
+    .filter((item) => {
+      const name = normalizedText(item.name || "");
+      return normalizedPatterns.some((pattern) => name.includes(pattern));
+    })
+    .reduce((sum, item) => sum + item.value, 0);
+}
+
+function extrasAndOvertimeCost(unit) {
+  return detailValue(unit, ["Pessoal"], ["extra", "extras", "dobra", "dobras", "hora extra", "horas extras"]);
+}
+
+function consumptionCost(unit) {
+  return (
+    (unit.categories.useAndConsumption || 0)
+    + detailValue(unit, ["Ocupacao", "Uso e consumo"], [
+      "energia",
+      "luz",
+      "agua",
+      "água",
+      "gas",
+      "gás",
+      "internet",
+      "telefone",
+      "conta de consumo",
+      "contas de consumo"
+    ])
+  );
+}
+
+function healthMetricValue(unit, key) {
+  if (key === "cmv") return categoryValue(unit, "cmv");
+  if (key === "people") return unit.categories.people || 0;
+  if (key === "extras") return extrasAndOvertimeCost(unit);
+  if (key === "occupancy") return unit.categories.occupancy || 0;
+  if (key === "thirdParty") return unit.categories.thirdParty || 0;
+  if (key === "marketing") return unit.categories.publicity || 0;
+  if (key === "consumption") return consumptionCost(unit);
+  if (key === "taxes") return unit.categories.taxes || 0;
+  if (key === "netProfit") return displayProfit(unit);
+  return 0;
+}
+
+function healthMetricRate(unit, key) {
+  return percentOfRevenue(unit, healthMetricValue(unit, key));
+}
+
+function healthStatus(rate, benchmark) {
+  if (benchmark.min === null || benchmark.max === null) return "pending";
+  return rate >= benchmark.min && rate <= benchmark.max ? "healthy" : "outside";
 }
 
 function variableCostRows(unit) {
@@ -189,10 +277,12 @@ function percentOfTotal(total, value) {
 
 function combineNamedRows(rows) {
   const map = rows.reduce((currentMap, row) => {
-    const current = currentMap.get(row.name) || { code: row.code || row.name, name: row.name, value: 0, children: [] };
+    const name = displayAccountName(row);
+    const key = row.code || name;
+    const current = currentMap.get(key) || { code: row.code || name, name, value: 0, children: [] };
     current.value += row.value;
     current.children = combineNamedRows([...(current.children || []), ...(row.children || [])]);
-    currentMap.set(row.name, current);
+    currentMap.set(key, current);
     return currentMap;
   }, new Map());
 
@@ -412,6 +502,48 @@ function renderSummary(unit) {
   });
 }
 
+function formatBenchmarkRange(benchmark) {
+  if (benchmark.min === null || benchmark.max === null) {
+    return benchmark.reminder || "faixa a definir";
+  }
+  return `${pct.format(benchmark.min)} a ${pct.format(benchmark.max)} do faturamento`;
+}
+
+function renderHealthBenchmarks(unit) {
+  const container = document.querySelector("#healthBenchmarks");
+  const rows = healthBenchmarks.map((benchmark) => {
+    const value = healthMetricValue(unit, benchmark.key);
+    const rate = healthMetricRate(unit, benchmark.key);
+    const status = healthStatus(rate, benchmark);
+    return { ...benchmark, value, rate, status };
+  });
+
+  container.innerHTML = `
+    <div class="panel-title compact-title">
+      <div>
+        <p class="eyebrow">Faixas saudaveis</p>
+        <h2>Custos por categoria vs. referencia do restaurante</h2>
+      </div>
+    </div>
+    <div class="health-grid">
+      ${rows.map((row) => `
+        <article class="health-card ${row.status}">
+          <div class="health-card-head">
+            <span class="swatch" style="background:${row.color}"></span>
+            <strong>${row.label}</strong>
+          </div>
+          ${row.subLabel ? `<em>${row.subLabel}</em>` : ""}
+          <div class="health-card-values">
+            <span>${money.format(row.value)}</span>
+            <strong>${pct.format(row.rate)}</strong>
+          </div>
+          <small>${formatBenchmarkRange(row)}</small>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderSummaryDetail(unit) {
   const container = document.querySelector("#summaryDetail");
   if (state.activeSummaryMetric !== "revenue") {
@@ -524,15 +656,41 @@ function renderBars(units) {
 }
 
 function categoryValue(unit, key) {
+  if (key === "cmv") {
+    return (unit.categories.cmv || 0) + (unit.categories.packaging || 0);
+  }
+  if (key === "packaging") {
+    return 0;
+  }
   return unit.categories[key] || 0;
 }
 
 function normalizeDetailName(group, name) {
-  const cleanName = name.replace(/^[^:]+:\s/, "");
+  const cleanName = displayAccountName({ name }).replace(/^[^:]+:\s/, "");
   if (group === "Pessoal" && /folha de pagamento|comissao a deduzir/i.test(cleanName)) {
     return "Folha + comissoes";
   }
   return cleanName;
+}
+
+function displayAccountName(row) {
+  const name = String(row?.name || "");
+  const source = sourceUnitName(name);
+  const raw = rawDetailName(name).trim();
+  const withoutLeadingCode = raw.replace(/^\d{2,}\s*-\s*/, "").trim();
+  const isOnlyCode = /^\d+$/.test(withoutLeadingCode.replace(/\s+/g, ""));
+
+  if (withoutLeadingCode && !isOnlyCode) {
+    return source ? `${source}: ${withoutLeadingCode}` : withoutLeadingCode;
+  }
+
+  const code = String(row?.code || raw || "").replace(/\D+/g, "");
+  for (let size = code.length; size >= 2; size -= 2) {
+    const fallback = accountNameOverrides[code.slice(0, size)];
+    if (fallback) return source ? `${source}: ${fallback}` : fallback;
+  }
+
+  return source ? `${source}: Sem descricao` : "Sem descricao";
 }
 
 function sourceUnitName(name) {
@@ -642,7 +800,7 @@ function renderSubcategoryDetails(unit, activeKey, activeColor, rows) {
   const parent = currentDrillParent(unit, activeKey);
   const header = parent ? `
     <button class="drill-back" data-drill-back type="button" aria-label="Voltar">
-      <span aria-hidden="true">‚Üê</span>
+      <span aria-hidden="true">←</span>
       <strong>${parent.name}</strong>
     </button>
   ` : "";
@@ -701,7 +859,7 @@ function renderCostDetails(unit, activeKey, activeColor) {
         <span class="swatch" style="background:${activeColor}"></span>
         <div>
           <strong>${labels[activeKey]}</strong>
-          <small>${money.format(total)} ¬∑ ${pct.format(percentOfRevenue(unit, total))} do faturamento</small>
+          <small>${money.format(total)} · ${pct.format(percentOfRevenue(unit, total))} do faturamento</small>
         </div>
       </div>
       <div class="detail-bars scrollable">
@@ -723,7 +881,6 @@ function renderCostDetails(unit, activeKey, activeColor) {
 function renderCostMix(unit) {
   const keys = [
     "cmv",
-    "packaging",
     "people",
     "taxes",
     "occupancy",
@@ -832,8 +989,7 @@ function renderBreakEven(unit) {
       ${distance >= 0 ? `A unidade ficou ${money.format(distance)} acima do equilibrio.` : `Faltaram ${money.format(Math.abs(distance))} para empatar operacionalmente.`}
     </p>
     <div class="pill-row">
-      <span class="pill">CMV comida ${pct.format(percentOfRevenue(unit, unit.categories.cmv || 0))}</span>
-      <span class="pill">Embalagens ${pct.format(percentOfRevenue(unit, unit.categories.packaging || 0))}</span>
+      <span class="pill">CMV ${pct.format(percentOfRevenue(unit, categoryValue(unit, "cmv")))}</span>
       <span class="pill">Pessoal ${pct.format(percentOfRevenue(unit, unit.categories.people || 0))}</span>
       <span class="pill">Ocupacao ${pct.format(percentOfRevenue(unit, unit.categories.occupancy || 0))}</span>
     </div>
@@ -991,7 +1147,7 @@ function renderComparisonVisibility() {
 }
 
 function renderAnalysis(unit) {
-  const cmvRate = percentOfRevenue(unit, unit.categories.cmv || 0);
+  const cmvRate = percentOfRevenue(unit, categoryValue(unit, "cmv"));
   const peopleRate = percentOfRevenue(unit, unit.categories.people || 0);
   const occupancyRate = percentOfRevenue(unit, unit.categories.occupancy || 0);
   const fixed = fixedCost(unit);
@@ -999,9 +1155,9 @@ function renderAnalysis(unit) {
 
   const cards = [
     `${unit.name}: distribuicao de lucros permanece dentro das despesas, mas aparece destacada separadamente por ser uma retirada nao operacional. Custo fixo operacional estimado em ${money.format(fixed)}, com ponto de equilibrio perto de ${money.format(be)}.`,
-    `CMV comida em ${pct.format(cmvRate)} do faturamento. Embalagens ficam separadas como variavel operacional; loucas, limpeza e materiais operacionais entram no fixo.`,
+    `CMV em ${pct.format(cmvRate)} do faturamento. Aqui entram comida, embalagens e descartaveis; loucas, limpeza e materiais operacionais entram no fixo.`,
     `Pessoal em ${pct.format(peopleRate)} do faturamento e ocupacao em ${pct.format(occupancyRate)}. Esses dois blocos explicam boa parte do custo fixo; valem escala, jornada, extras/dobras, aluguel/energia e manutencoes.`,
-    `Motoboy esta classificado como custo fixo. Os custos variaveis ficam concentrados em CMV comida, embalagens/descartaveis, impostos e comissoes/tarifas.`
+    `Motoboy esta classificado como custo fixo. Os custos variaveis ficam concentrados em CMV, impostos e comissoes/tarifas.`
   ];
 
   document.querySelector("#analysis").innerHTML = cards
@@ -1062,7 +1218,7 @@ function renderBankReconciliation(unit, units) {
         <strong>${money.format(totals.credits)}</strong>
       </article>
       <article>
-        <span>Sa√≠das no banco</span>
+        <span>Saídas no banco</span>
         <strong>${money.format(totals.debits)}</strong>
       </article>
       <article>
@@ -1073,17 +1229,17 @@ function renderBankReconciliation(unit, units) {
 
     <div class="bank-compare">
       <div class="bank-step bank-step-bank">
-        <span>Varia√ß√£o banc√°ria</span>
+        <span>Variação bancária</span>
         <strong>${money.format(bankVariation)}</strong>
         <small>Saldo final - saldo inicial</small>
       </div>
       <div class="bank-step bank-step-report">
-        <span>Resultado caixa do relat√≥rio de caixa</span>
+        <span>Resultado caixa do relatório de caixa</span>
         <strong>${money.format(reportCashResult)}</strong>
-        <small>Base separada da an√°lise por compet√™ncia</small>
+        <small>Base separada da análise por competência</small>
       </div>
       <div class="bank-step bank-step-difference ${statusClass}">
-        <span>Diferen√ßa a investigar</span>
+        <span>Diferença a investigar</span>
         <strong class="${statusClass}">${money.format(difference)}</strong>
         <small>${differenceText}</small>
       </div>
@@ -1093,9 +1249,9 @@ function renderBankReconciliation(unit, units) {
       <div class="bank-unit-table">
         <div class="bank-unit-row head">
           <strong>Unidade</strong>
-          <span>Varia√ß√£o banco</span>
+          <span>Variação banco</span>
           <span>Resultado caixa</span>
-          <span>Diferen√ßa</span>
+          <span>Diferença</span>
         </div>
         ${unitRows}
       </div>
@@ -1111,7 +1267,7 @@ function renderBankReconciliation(unit, units) {
           <div>
             <span>Inicial ${money.format(account.openingBalance)}</span>
             <span>Entradas ${money.format(account.credits)}</span>
-            <span>Sa√≠das ${money.format(account.debits)}</span>
+            <span>Saídas ${money.format(account.debits)}</span>
             <span>Final ${money.format(account.closingBalance)}</span>
           </div>
           <p>Arquivo: ${account.source || "extrato importado"}</p>
@@ -1134,7 +1290,7 @@ function renderBankReconciliation(unit, units) {
     </div>
 
     <p class="bank-note">
-      A compara√ß√£o principal usa o resultado do relat√≥rio de caixa, com distribui√ß√£o de lucros dentro das despesas, porque essa retirada tamb√©m aparece como sa√≠da de dinheiro no banco.
+      A comparação principal usa o resultado do relatório de caixa, com distribuição de lucros dentro das despesas, porque essa retirada também aparece como saída de dinheiro no banco.
     </p>
   `;
 }
@@ -1234,17 +1390,25 @@ function renderEvolution() {
       month: pack.month,
       revenue: displayRevenue(view),
       expenses: displayExpenses(view),
-      cmv: view.categories.cmv || 0,
+      cmv: categoryValue(view, "cmv"),
       taxes: view.categories.taxes || 0,
       people: view.categories.people || 0,
       occupancy: view.categories.occupancy || 0,
+      thirdParty: view.categories.thirdParty || 0,
+      marketing: view.categories.publicity || 0,
+      consumption: consumptionCost(view),
       profit: displayProfit(view),
       breakEven: breakEven(view),
       bankDifference: bankTotals(view).closingBalance - bankTotals(view).openingBalance - displayCashResult(view),
-      cmvRate: percentOfRevenue(view, view.categories.cmv || 0),
+      cmvRate: percentOfRevenue(view, categoryValue(view, "cmv")),
       taxesRate: percentOfRevenue(view, view.categories.taxes || 0),
       peopleRate: percentOfRevenue(view, view.categories.people || 0),
-      occupancyRate: percentOfRevenue(view, view.categories.occupancy || 0)
+      extrasRate: healthMetricRate(view, "extras"),
+      occupancyRate: percentOfRevenue(view, view.categories.occupancy || 0),
+      thirdPartyRate: healthMetricRate(view, "thirdParty"),
+      marketingRate: healthMetricRate(view, "marketing"),
+      consumptionRate: healthMetricRate(view, "consumption"),
+      netProfitRate: healthMetricRate(view, "netProfit")
     };
   });
 
@@ -1265,14 +1429,11 @@ function renderEvolution() {
       </div>
     ` : `
       <div class="evolution-sparks">
-        ${renderSparkCard(rows, "cmvRate", "CMV comida", palette[0])}
-        ${renderSparkCard(rows, "peopleRate", "Pessoal", palette[1])}
-        ${renderSparkCard(rows, "occupancyRate", "Ocupacao", palette[2])}
-        ${renderSparkCard(rows, "taxesRate", "Impostos", palette[3])}
+        ${healthBenchmarks.map((benchmark) => renderSparkCard(rows, `${benchmark.key}Rate`, benchmark.label, benchmark.color)).join("")}
       </div>
       <div class="evolution-table">
         <div class="evolution-row head">
-          <span>Mes</span><span>Faturamento</span><span>Despesas</span><span>CMV comida</span><span>Pessoal</span><span>Ocupacao</span><span>Impostos</span><span>Lucro</span><span>Equilibrio</span><span>Dif. banco</span>
+          <span>Mes</span><span>Faturamento</span><span>Despesas</span><span>CMV</span><span>Pessoal</span><span>Extras</span><span>Ocupacao</span><span>Terceiros</span><span>Marketing</span><span>Consumo</span><span>Impostos</span><span>Lucro</span><span>Equilibrio</span><span>Dif. banco</span>
         </div>
         ${rows.map((row, index) => {
           const previous = rows[index - 1];
@@ -1283,7 +1444,11 @@ function renderEvolution() {
               <span>${money.format(row.expenses)} ${metricDelta(row, previous, "expenses")}</span>
               <span>${pct.format(row.cmvRate)} ${rateDelta(row, previous, "cmvRate")}</span>
               <span>${pct.format(row.peopleRate)} ${rateDelta(row, previous, "peopleRate")}</span>
+              <span>${pct.format(row.extrasRate)} ${rateDelta(row, previous, "extrasRate")}</span>
               <span>${pct.format(row.occupancyRate)} ${rateDelta(row, previous, "occupancyRate")}</span>
+              <span>${pct.format(row.thirdPartyRate)} ${rateDelta(row, previous, "thirdPartyRate")}</span>
+              <span>${pct.format(row.marketingRate)} ${rateDelta(row, previous, "marketingRate")}</span>
+              <span>${pct.format(row.consumptionRate)} ${rateDelta(row, previous, "consumptionRate")}</span>
               <span>${pct.format(row.taxesRate)} ${rateDelta(row, previous, "taxesRate")}</span>
               <span class="${row.profit >= 0 ? "positive" : "negative"}">${money.format(row.profit)} ${metricDelta(row, previous, "profit")}</span>
               <span>${money.format(row.breakEven)} ${metricDelta(row, previous, "breakEven")}</span>
@@ -1328,6 +1493,7 @@ function render() {
   renderSummary(unit);
   renderSummaryDetail(unit);
   renderUnitSummary(units);
+  renderHealthBenchmarks(unit);
   renderAccountingNote(unit);
   renderBars(units);
   renderCostMix(unit);
@@ -1348,7 +1514,7 @@ function monthLabel(month) {
 
 const monthElement = document.querySelector("#dashboardMonthLabel");
 if (monthElement) {
-  monthElement.textContent = `${monthLabel(window.financeDataset.months?.[0] || "2026-03")} ¬∑ Portal Linx Menew`;
+  monthElement.textContent = `${monthLabel(window.financeDataset.months?.[0] || "2026-03")} · Portal Linx Menew`;
 }
 
 document.querySelectorAll(".unit-button").forEach((button) => {

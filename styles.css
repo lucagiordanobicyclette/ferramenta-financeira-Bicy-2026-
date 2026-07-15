@@ -123,6 +123,80 @@ main {
   margin-top: 12px;
 }
 
+.health-panel {
+  margin-top: 12px;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(32, 40, 56, 0.48);
+}
+
+.health-card.healthy {
+  border-color: rgba(63, 209, 139, 0.52);
+  background: linear-gradient(180deg, rgba(32, 40, 56, 0.72), rgba(33, 78, 58, 0.38));
+}
+
+.health-card.outside {
+  border-color: rgba(242, 109, 91, 0.56);
+  background: linear-gradient(180deg, rgba(32, 40, 56, 0.72), rgba(91, 43, 50, 0.38));
+}
+
+.health-card.pending {
+  border-color: rgba(168, 179, 199, 0.22);
+}
+
+.health-card-head,
+.health-card-values {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.health-card-head {
+  justify-content: flex-start;
+  color: var(--ink);
+}
+
+.health-card-values {
+  margin-top: 10px;
+}
+
+.health-card-values span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.health-card-values strong {
+  color: var(--ink);
+  font-size: 1.2rem;
+}
+
+.health-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.health-card em {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .compact-title {
   margin-bottom: 14px;
 }
@@ -1032,7 +1106,7 @@ button.metric.active {
 
 .evolution-sparks {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1084,10 +1158,10 @@ button.metric.active {
 
 .evolution-row {
   display: grid;
-  grid-template-columns: 92px repeat(9, minmax(112px, 1fr));
+  grid-template-columns: 92px repeat(13, minmax(108px, 1fr));
   gap: 10px;
   align-items: center;
-  min-width: 1320px;
+  min-width: 1680px;
   padding: 10px 12px;
   border-radius: 7px;
   background: rgba(99, 210, 158, 0.07);
@@ -1286,6 +1360,7 @@ button.metric.active {
 
   .summary-grid,
   .unit-summary-grid,
+  .health-grid,
   .note-grid,
   .bank-summary-grid,
   .bank-compare,

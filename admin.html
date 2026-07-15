@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Importar relatorios financeiros</title>
-    <link rel="stylesheet" href="styles.css?v=20260616-1">
+    <link rel="stylesheet" href="styles.css?v=20260715-2">
   </head>
   <body>
     <header class="topbar">
@@ -22,7 +22,7 @@
         <div class="panel-title">
           <div>
             <p class="eyebrow">Novo mes</p>
-            <h2>Selecionar PDFs de competencia, caixa e extratos</h2>
+            <h2>Selecionar relatorios Linx e extratos</h2>
           </div>
         </div>
 
@@ -35,59 +35,59 @@
           <div class="upload-group">
             <div>
               <p class="eyebrow">Competencia</p>
-              <h3>Relatorios para a analise gerencial</h3>
+              <h3>Relatorios para a analise gerencial (Excel recomendado)</h3>
             </div>
 
             <label>
               Competencia Barra
-              <input name="competence_report_barra" type="file" accept="application/pdf" required>
+              <input name="competence_report_barra" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Competencia Leblon
-              <input name="competence_report_leblon" type="file" accept="application/pdf" required>
+              <input name="competence_report_leblon" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Competencia JB Loja
-              <input name="competence_report_jb_loja" type="file" accept="application/pdf" required>
+              <input name="competence_report_jb_loja" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Competencia JB Delivery Filial
-              <input name="competence_report_jb_delivery" type="file" accept="application/pdf" required>
+              <input name="competence_report_jb_delivery" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
           </div>
 
           <div class="upload-group">
             <div>
               <p class="eyebrow">Caixa</p>
-              <h3>Relatorios para conferencia bancaria</h3>
+              <h3>Relatorios para conferencia bancaria (Excel recomendado)</h3>
             </div>
 
             <label>
               Caixa Barra
-              <input name="cash_report_barra" type="file" accept="application/pdf" required>
+              <input name="cash_report_barra" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Caixa Leblon
-              <input name="cash_report_leblon" type="file" accept="application/pdf" required>
+              <input name="cash_report_leblon" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Caixa JB Loja
-              <input name="cash_report_jb_loja" type="file" accept="application/pdf" required>
+              <input name="cash_report_jb_loja" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
 
             <label>
               Caixa JB Delivery Filial
-              <input name="cash_report_jb_delivery" type="file" accept="application/pdf" required>
+              <input name="cash_report_jb_delivery" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
             </label>
           </div>
 
           <label>
-            Extratos bancarios
+            Extratos bancarios (PDF)
             <input name="bank_files" type="file" accept="application/pdf" multiple>
           </label>
 
@@ -100,7 +100,7 @@
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
-      import { buildFinancePackage } from "./browser-importer.js?v=20260618-2";
+      import { buildFinancePackage } from "./browser-importer.js?v=20260715-3";
 
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -138,7 +138,7 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        result.textContent = "Lendo PDFs no navegador...";
+        result.textContent = "Lendo arquivos no navegador...";
 
         const formData = new FormData(form);
         const month = formData.get("month");
@@ -179,7 +179,7 @@ Importacao concluida.
 
 Mes: ${month}
 Analise salva neste navegador.
-PDFs processados localmente; nenhum arquivo foi enviado para servidor.
+Arquivos processados localmente; nenhum arquivo foi enviado para servidor.
 
 Resumo lido dos relatorios:
 ${summaryRows}

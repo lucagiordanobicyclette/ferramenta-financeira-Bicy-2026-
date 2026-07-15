@@ -35,20 +35,41 @@ const GROUP_NAMES = {
 const PACKAGING_PATTERNS = [
   "embalagens",
   "descartaveis",
-  "descart√°veis"
+  "descartáveis"
 ];
 
 const OPERATIONAL_MATERIAL_PATTERNS = [
   "uniformes",
   "utensilios",
-  "utens√≠lios",
+  "utensílios",
   "loucas",
-  "lou√ßas",
+  "louças",
   "limpeza",
   "material operacional",
   "material cestas",
   "material de apoio"
 ];
+
+const ACCOUNT_NAME_OVERRIDES = {
+  "01": "Receitas",
+  "0101": "Receita operacional",
+  "0102": "Receita nao operacional",
+  "02": "Despesas",
+  "0201": "Despesas operacionais",
+  "020101": "Tarifas bancarias e taxas",
+  "020102": "Impostos",
+  "020104": "CMV",
+  "020105": "Despesas pessoal",
+  "020106": "Ocupacao",
+  "020107": "Servicos de terceiros",
+  "020108": "Publicidade",
+  "020109": "Uso e consumo",
+  "020110": "Material operacional",
+  "020113": "Legal / taxas",
+  "0202": "Nao operacional",
+  "020201": "Investimentos",
+  "020202": "Distribuicao de lucros"
+};
 
 const UNIT_NAMES = {
   barra: "Barra",
@@ -85,6 +106,8 @@ const CASH_REPORT_ENTRIES = [
   ["jb-delivery", "cash_report_jb_delivery"]
 ];
 
+const SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"];
+
 function parseMoney(raw) {
   const cleaned = raw
     .replace(/\u00a0/g, " ")
@@ -97,9 +120,56 @@ function parseMoney(raw) {
   return sign * Number(number);
 }
 
+function isSpreadsheetFile(file) {
+  const name = normalizeText(file.name || "");
+  return SPREADSHEET_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
+function isPdfFile(file) {
+  return normalizeText(file.name || "").endsWith(".pdf") || file.type === "application/pdf";
+}
+
+function ptMoney(value) {
+  return `R$ ${Number(value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function restoreAccountCode(value) {
+  const digits = String(value || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) return digits;
+  if (digits.startsWith("1") || digits.startsWith("2")) {
+    const padded = `0${digits}`;
+    return padded.length % 2 === 0 ? padded : digits;
+  }
+  return digits;
+}
+
 function cleanName(raw) {
   return raw.replace(/\n/g, " ").split(/\s+/).filter(Boolean).join(" ").toLowerCase()
     .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+function accountDisplayName(name, code) {
+  const cleaned = cleanName(name || "");
+  const onlyCode = /^\d+$/.test(cleaned.replace(/\s+/g, ""));
+  if (cleaned && !onlyCode) return cleaned;
+
+  for (let size = code.length; size >= 2; size -= 2) {
+    const fallback = ACCOUNT_NAME_OVERRIDES[code.slice(0, size)];
+    if (fallback) return fallback;
+  }
+
+  return "Sem descricao";
+}
+
+function isAccountNameContinuation(line) {
+  if (!line || /R\$|Nível:|about:blank|Portal Linx|^\d{2,}\b/i.test(line)) {
+    return false;
+  }
+  return /\D/.test(line);
 }
 
 function normalizeText(value) {
@@ -157,7 +227,61 @@ function inferUnitFromDocument(file, text) {
   return "";
 }
 
-async function extractPdfText(file, pdfjsLib) {
+let tesseractPromise = null;
+let sheetJsPromise = null;
+
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (tesseractPromise) return tesseractPromise;
+
+  tesseractPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error("Nao consegui carregar o OCR para ler PDF em imagem. Exporte o relatorio do Linx como PDF textual ou Excel."));
+    document.head.appendChild(script);
+  });
+
+  return tesseractPromise;
+}
+
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (sheetJsPromise) return sheetJsPromise;
+
+  sheetJsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("Nao consegui carregar o leitor de Excel. Tente novamente com internet ativa ou exporte o relatorio em PDF textual."));
+    document.head.appendChild(script);
+  });
+
+  return sheetJsPromise;
+}
+
+async function ocrPdfPages(pdf, file, onProgress) {
+  if (typeof document === "undefined") return "";
+  const Tesseract = await loadTesseract();
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    onProgress?.(`OCR em ${file.name}: pagina ${pageNumber}/${pdf.numPages}`);
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    await page.render({ canvasContext: context, viewport }).promise;
+    const result = await Tesseract.recognize(canvas, "por+eng");
+    pages.push(result.data?.text || "");
+  }
+
+  return pages.join("\n");
+}
+
+async function extractPdfText(file, pdfjsLib, onProgress) {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data }).promise;
   const pages = [];
@@ -183,7 +307,59 @@ async function extractPdfText(file, pdfjsLib) {
     pages.push(lines.join("\n"));
   }
 
-  return pages.join("\n");
+  const extracted = pages.join("\n");
+  if (extracted.replace(/\s+/g, "").length > 80) {
+    return extracted;
+  }
+
+  onProgress?.(`${file.name} parece PDF em imagem; tentando OCR`);
+  const ocrText = await ocrPdfPages(pdf, file, onProgress);
+  return ocrText || extracted;
+}
+
+function formatSpreadsheetCell(value, index) {
+  if (value === null || value === undefined || value === "") return "";
+  if (value instanceof Date) return value.toLocaleDateString("pt-BR");
+
+  if (typeof value === "number") {
+    if (index === 0) return restoreAccountCode(value);
+    if (index === 1 && Number.isInteger(value) && value > 0 && value < 20) return `Nível: ${value}`;
+    return ptMoney(value);
+  }
+
+  const raw = String(value).replace(/\u00a0/g, " ").trim();
+  if (!raw) return "";
+  if (index === 0 && /^\d+$/.test(raw)) return restoreAccountCode(raw);
+  if (index === 1 && /^\d+$/.test(raw) && Number(raw) > 0 && Number(raw) < 20) return `Nível: ${raw}`;
+  if (index >= 2 && /^-?\d{1,3}(\.\d{3})*,\d{2}$/.test(raw)) return `R$ ${raw}`;
+  if (index >= 2 && /^-?\d+([.,]\d+)?$/.test(raw)) return ptMoney(Number(raw.replace(/\./g, "").replace(",", ".")));
+  return raw;
+}
+
+async function extractSpreadsheetText(file, onProgress) {
+  const XLSX = await loadSheetJs();
+  onProgress?.(`Lendo planilha: ${file.name}`);
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: "array", cellDates: false });
+  const lines = [];
+
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+    lines.push(`Aba ${sheetName}`);
+    rows.forEach((row) => {
+      const cells = row.map((cell, index) => formatSpreadsheetCell(cell, index)).filter(Boolean);
+      if (cells.length) lines.push(cells.join(" "));
+    });
+  });
+
+  return lines.join("\n");
+}
+
+async function extractReportText(file, pdfjsLib, onProgress) {
+  if (isSpreadsheetFile(file)) return extractSpreadsheetText(file, onProgress);
+  if (isPdfFile(file)) return extractPdfText(file, pdfjsLib, onProgress);
+  throw new Error(`Formato nao suportado em ${file.name}. Use Excel, CSV ou PDF.`);
 }
 
 function parseAccounts(text) {
@@ -203,7 +379,7 @@ function parseAccounts(text) {
 
     accounts.push({
       code,
-      name: cleanName(name || code),
+      name: accountDisplayName(name, code),
       level,
       value: Number(value.toFixed(2)),
       revenueValue: Number(revenue.toFixed(2)),
@@ -220,7 +396,7 @@ function parseAccounts(text) {
     const amounts = segment.match(/-?\s*R\$\s*[\d.]+,\d{2}/g) || [];
     const values = amounts.map(parseMoney);
 
-    const inlineLevel = segment.match(/N√≠vel:\s*(\d+)/i);
+    const inlineLevel = segment.match(/Nível:\s*(\d+)/i);
     const levelLine = block.find((line, index) => index > 0 && /^\d+\b/.test(line));
     const trailingLevelLine = block.find((line, index) => {
       if (index === 0 || /R\$/.test(line)) return false;
@@ -234,15 +410,11 @@ function parseAccounts(text) {
     );
 
     let namePart = start.match[2]
-      .replace(/\s*N√≠vel:.*$/i, "")
+      .replace(/\s*Nível:.*$/i, "")
       .replace(/\s*-?\s*R\$\s*[\d.]+,\d{2}.*$/, "")
       .trim();
 
-    const continuation = block.find((line, index) => {
-      if (index === 0 || /R\$|N√≠vel:|about:blank|Portal Linx/i.test(line)) return false;
-      if (/^\d+\b/.test(line)) return false;
-      return /\D/.test(line);
-    });
+    const continuation = block.find((line, index) => index > 0 && isAccountNameContinuation(line));
     if (continuation) {
       namePart = `${namePart} ${continuation.replace(/\s+\d+$/, "")}`.trim();
     }
@@ -266,7 +438,7 @@ function parseAccounts(text) {
     });
   });
 
-  lines.forEach((line) => {
+  lines.forEach((line, index) => {
     const match = line.match(/^(0[12]\d*)\s+(.*)$/);
     if (!match) return;
     const code = match[1];
@@ -280,10 +452,15 @@ function parseAccounts(text) {
     const revenue = values[0] || 0;
     const expense = values[1] || 0;
     const subtotal = values[2] || expense || revenue;
-    const name = match[2].slice(0, firstAmount.index)
+    let name = match[2].slice(0, firstAmount.index)
       .replace(/\s*%\/SEG.*$/i, "")
       .replace(/\s*%RT.*$/i, "")
-      .trim() || (code === "0202" ? "Nao operacional" : code);
+      .trim();
+    if (!name) {
+      const previous = isAccountNameContinuation(lines[index - 1]) ? lines[index - 1].replace(/\s+\d+$/, "").trim() : "";
+      const next = isAccountNameContinuation(lines[index + 1]) ? lines[index + 1].replace(/\s+\d+$/, "").trim() : "";
+      name = `${previous} ${next}`.trim();
+    }
 
     pushAccount({
       code,
@@ -425,7 +602,7 @@ function detailRows(accounts, unitId) {
   Object.entries(CATEGORY_ROOTS).forEach(([key, root]) => {
     if (key === "cmv") {
       rows.push(...rowsToDetail(split.cmv, GROUP_NAMES.cmv));
-      rows.push(...rowsToDetail(split.packaging, GROUP_NAMES.packaging));
+      rows.push(...rowsToDetail(split.packaging, GROUP_NAMES.cmv));
       rows.push(...rowsToDetail(split.operationalMaterial, GROUP_NAMES.operationalMaterial));
       return;
     }
@@ -461,7 +638,11 @@ function categoryDetails(accounts, unitId) {
         : categoryRows(accounts, root)
     ])
   );
-  details.packaging = split.packaging;
+  details.cmv = [
+    ...split.cmv,
+    ...split.packaging
+  ];
+  details.packaging = [];
   details.operationalMaterial = [
     ...categoryRows(accounts, EXTRA_CATEGORY_ROOTS.operationalMaterial),
     ...split.operationalMaterial
@@ -477,12 +658,12 @@ function parseItauBank(text) {
   const closing = balancePair?.[2]
     || text.match(/saldo final\s+(-?[\d.]+,\d{2})/i)?.[1]
     || text.match(/saldo em \d{2}\/\d{2}\/\d{2}[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s+R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
-  const totalPair = text.match(/total\s*entradas\s+total\s*sa[i√≠]das[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
+  const totalPair = text.match(/total\s*entradas\s+total\s*sa[ií]das[\s\S]*?R\$\s*(-?[\d.]+,\d{2})\s+R\$\s*(-?[\d.]+,\d{2})/i);
   const credits = totalPair?.[1]
-    || text.match(/entradas\s*\(cr[e√©]ditos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/entradas\s*\(cr[eé]ditos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
     || text.match(/total\s+entradas[\s\S]*?R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
   const debits = totalPair?.[2]
-    || text.match(/sa[i√≠]das\s*\(d[e√©]bitos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
+    || text.match(/sa[ií]das\s*\(d[eé]bitos\)[\s\S]*?\btotal\s+(-?[\d.]+,\d{2})/i)?.[1]
     || text.match(/total\s+entradas[\s\S]*?R\$\s*-?[\d.]+,\d{2}\s*R\$\s*(-?[\d.]+,\d{2})/i)?.[1];
   if (!opening || !closing || !credits || !debits) return null;
   return {
@@ -515,7 +696,7 @@ function inferBankFile(file, text) {
   const bank = combined.includes("bradesco")
     ? "Bradesco"
     : combined.includes("itau") || combined.includes("minha conta") && combined.includes("minha agencia")
-      ? "Ita√∫"
+      ? "Itaú"
       : "Banco";
 
   let unitId = "";
@@ -638,8 +819,8 @@ function buildUnit(month, unitId, competenceFile, competenceAccounts, cashFile, 
   const split = splitCmvRows(competenceAccounts);
   const parsedCategories = {
     ...baseCategories(competenceAccounts),
-    cmv: rowTotal(split.cmv),
-    packaging: rowTotal(split.packaging)
+    cmv: rowTotal(split.cmv) + rowTotal(split.packaging),
+    packaging: 0
   };
   const categories = {
     ...parsedCategories,
@@ -653,7 +834,7 @@ function buildUnit(month, unitId, competenceFile, competenceAccounts, cashFile, 
 
   const variableItems = {
     cmv: categories.cmv || 0,
-    packaging: categories.packaging || 0,
+    packaging: 0,
     taxes: categories.taxes || 0,
     commissions: categories.commissions || 0
   };
@@ -743,33 +924,41 @@ export async function buildFinancePackage({
 
   const competenceData = {};
   for (const [fallbackUnitId, file] of competenceEntries) {
-    const text = await extractPdfText(file, pdfjsLib);
-    const unitId = inferUnitFromDocument(file, text) || fallbackUnitId;
+    const text = await extractReportText(file, pdfjsLib, onProgress);
+    const unitId = fallbackUnitId;
     const accounts = parseAccounts(text);
     assertReadableReport("competencia", unitId, file, accounts);
-    competenceData[unitId] = { file, accounts };
+    competenceData[unitId] = {
+      file,
+      accounts,
+      detectedUnitId: inferUnitFromDocument(file, text) || ""
+    };
     advance(`Lendo competencia: ${SOURCE_LABELS[unitId]}`);
   }
 
   const cashData = {};
   for (const [fallbackUnitId, file] of cashEntries) {
-    const text = await extractPdfText(file, pdfjsLib);
-    const unitId = inferUnitFromDocument(file, text) || fallbackUnitId;
+    const text = await extractReportText(file, pdfjsLib, onProgress);
+    const unitId = fallbackUnitId;
     const accounts = parseAccounts(text);
     assertReadableReport("caixa", unitId, file, accounts);
-    cashData[unitId] = { file, accounts };
+    cashData[unitId] = {
+      file,
+      accounts,
+      detectedUnitId: inferUnitFromDocument(file, text) || ""
+    };
     advance(`Lendo caixa: ${SOURCE_LABELS[unitId]}`);
   }
 
   const missingAfterInference = Object.keys(UNIT_NAMES).filter((unitId) => !competenceData[unitId] || !cashData[unitId]);
   if (missingAfterInference.length) {
-    throw new Error(`Nao consegui identificar todos os CNPJs dos relatorios: ${missingAfterInference.map((unitId) => UNIT_NAMES[unitId]).join(", ")}`);
+    throw new Error(`Faltam relatorios obrigatorios para: ${missingAfterInference.map((unitId) => UNIT_NAMES[unitId]).join(", ")}`);
   }
 
   const bankAccounts = Object.fromEntries(Object.keys(UNIT_NAMES).map((unitId) => [unitId, []]));
   const ignoredBankFiles = [];
   for (const file of bankFiles) {
-    const text = await extractPdfText(file, pdfjsLib);
+    const text = await extractPdfText(file, pdfjsLib, onProgress);
     const parsed = parseBankAccount(file, text);
     if (parsed) {
       bankAccounts[parsed.unitId].push(parsed);
@@ -828,7 +1017,7 @@ export async function buildFinancePackage({
         "Importacao feita no navegador a partir dos PDFs selecionados.",
         "Analise gerencial da parte superior feita pelos relatorios de competencia.",
         "Conferencia bancaria feita pelos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
-        "Ponto de equilibrio estimado com CMV comida, embalagens/descartaveis, impostos e comissoes/tarifas como custos variaveis; motoboy fica em custos fixos."
+        "Ponto de equilibrio estimado com CMV, impostos e comissoes/tarifas como custos variaveis; CMV inclui comida, embalagens e descartaveis. Motoboy fica em custos fixos."
       ],
       ignoredBankFiles,
       units
