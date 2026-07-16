@@ -934,6 +934,29 @@ function parseBankAccount(file, text) {
   };
 }
 
+function looksLikeLinxReport(text) {
+  const normalized = normalizeText(text);
+  return normalized.includes("balancete resumido")
+    || normalized.includes("resumo por plano de contas")
+    || normalized.includes("regime de caixa")
+    || normalized.includes("regime de competencia")
+    || normalized.includes("portal linx")
+    || normalized.includes("plano de contas");
+}
+
+function bankImportFailureReason(file, text, inferred) {
+  if (looksLikeLinxReport(text)) {
+    return "Este arquivo parece ser um relatorio Linx, nao um extrato bancario. Coloque-o no campo Caixa da unidade; em Extratos bancarios envie o extrato do Itau/Bradesco com saldo inicial, entradas, saidas e saldo final.";
+  }
+  if (inferred.unitId && inferred.bank === "Banco") {
+    return "Reconheci a unidade, mas nao encontrei padrao de extrato Itau/Bradesco nem os campos de saldo inicial, entradas, saidas e saldo final.";
+  }
+  if (inferred.unitId) {
+    return "Nao consegui ler saldos, entradas e saidas do extrato. Se o PDF for imagem/escaneado, exporte o extrato bancario em PDF textual ou CSV/Excel do banco.";
+  }
+  return "Nao consegui identificar a unidade do extrato.";
+}
+
 function baseTotals(accounts) {
   const byCode = accountMap(accounts);
   const revenue = valueOf(byCode, "01") || valueOf(byCode, "0101") + valueOf(byCode, "0102");
@@ -1168,9 +1191,7 @@ export async function buildFinancePackage({
         bank: inferred.bank,
         unitId: inferred.unitId,
         unitName: inferred.unitId ? UNIT_NAMES[inferred.unitId] : "",
-        reason: inferred.unitId
-          ? "Nao consegui ler saldos, entradas e saidas do extrato."
-          : "Nao consegui identificar a unidade do extrato."
+        reason: bankImportFailureReason(file, text, inferred)
       });
     }
     advance(`Lendo extrato ${file.name}`);
