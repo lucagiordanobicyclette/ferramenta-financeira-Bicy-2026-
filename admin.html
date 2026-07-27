@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Importar relatorios financeiros</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-8">
+    <link rel="stylesheet" href="styles.css?v=20260727-1">
   </head>
   <body>
     <header class="topbar">
@@ -34,35 +34,8 @@
 
           <div class="upload-group">
             <div>
-              <p class="eyebrow">Competencia</p>
-              <h3>Relatorios para a analise gerencial (Excel recomendado)</h3>
-            </div>
-
-            <label>
-              Competencia Barra
-              <input name="competence_report_barra" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
-            </label>
-
-            <label>
-              Competencia Leblon
-              <input name="competence_report_leblon" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
-            </label>
-
-            <label>
-              Competencia JB Loja
-              <input name="competence_report_jb_loja" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
-            </label>
-
-            <label>
-              Competencia JB Delivery Filial
-              <input name="competence_report_jb_delivery" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf" required>
-            </label>
-          </div>
-
-          <div class="upload-group">
-            <div>
               <p class="eyebrow">Caixa</p>
-              <h3>Relatorios para conferencia bancaria (Excel recomendado)</h3>
+              <h3>Relatorios para analise gerencial e conferencia bancaria (Excel recomendado)</h3>
             </div>
 
             <label>
@@ -105,7 +78,7 @@
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
-      import { buildFinancePackage } from "./browser-importer.js?v=20260715-8";
+      import { buildFinancePackage } from "./browser-importer.js?v=20260727-1";
 
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -149,12 +122,6 @@
         const month = formData.get("month");
         const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         clearMonthPackages(month);
-        const competenceReportFiles = {
-          competence_report_barra: formData.get("competence_report_barra"),
-          competence_report_leblon: formData.get("competence_report_leblon"),
-          competence_report_jb_loja: formData.get("competence_report_jb_loja"),
-          competence_report_jb_delivery: formData.get("competence_report_jb_delivery")
-        };
         const cashReportFiles = {
           cash_report_barra: formData.get("cash_report_barra"),
           cash_report_leblon: formData.get("cash_report_leblon"),
@@ -167,7 +134,6 @@
         try {
           const pack = await buildFinancePackage({
             month,
-            competenceReportFiles,
             cashReportFiles,
             bankFiles,
             transferFiles,

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Financeiro La Bicyclette</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-7">
+    <link rel="stylesheet" href="styles.css?v=20260727-1">
   </head>
   <body>
     <header class="topbar">
@@ -111,7 +111,7 @@
           </div>
         </div>
         <div class="history">
-          <p>Para cada mes, envie os PDFs por competencia, os PDFs por caixa e os extratos bancarios pelo importador. A parte superior usa competencia; a conferencia bancaria usa caixa + banco.</p>
+          <p>Para cada mes, envie os relatorios por caixa e os extratos bancarios pelo importador. A parte superior usa caixa; a conferencia bancaria compara caixa + banco.</p>
           <p>A estrutura separa Barra, Leblon, JB Loja e JB Delivery Filial, mas tambem mostra JB consolidado e Barra + Leblon consolidado.</p>
         </div>
       </section>
@@ -121,7 +121,7 @@
       const dashboardMonth = new URLSearchParams(window.location.search).get("month") || "2026-03";
       const dashboardSource = new URLSearchParams(window.location.search).get("source");
       const dashboardRun = new URLSearchParams(window.location.search).get("run");
-      const dashboardVersion = "20260715-7";
+      const dashboardVersion = "20260727-1";
       function packageKey(month) {
         return `financePackage:${month}`;
       }
@@ -137,7 +137,7 @@
         const raw = localStorage.getItem(uploadPackageKey(month, runId));
         if (!raw) return false;
         const payload = JSON.parse(raw);
-        if (payload.importModel !== "competence-cash-v3") return false;
+        if (!["cash-v4", "competence-cash-v3"].includes(payload.importModel)) return false;
         const units = payload.dataset?.units || [];
         const unreadableUnits = units.filter((unit) => !unit.revenue || !unit.expenses);
         if (units.length < 4 || unreadableUnits.length) {
