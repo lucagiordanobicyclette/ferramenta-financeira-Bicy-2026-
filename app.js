@@ -1274,7 +1274,7 @@ function renderBankReconciliation(unit, units) {
       <div class="bank-step bank-step-report">
         <span>Resultado caixa do relatório de caixa</span>
         <strong>${money.format(reportCashResult)}</strong>
-        <small>Base separada da análise por competência</small>
+        <small>Caixa original do relatório, antes dos ajustes gerenciais</small>
       </div>
       <div class="bank-step bank-step-difference ${statusClass}">
         <span>Diferença a investigar</span>
