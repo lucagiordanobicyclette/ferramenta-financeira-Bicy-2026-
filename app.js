@@ -967,7 +967,7 @@ function renderCostMix(unit) {
           <span class="swatch" style="background:${item.color}"></span>
           <span>${labels[item.key]}</span>
           <strong>${money.format(item.value)}</strong>
-          <em>${pct.format(percentOfTotal(total, item.value))}</em>
+          <em>${pct.format(percentOfRevenue(unit, item.value))}</em>
         </button>
       `;
       if (index === items.length - 1) {
@@ -1134,13 +1134,13 @@ function renderDetailPie(unit, rows) {
           <div class="legend-item">
             <span class="swatch" style="background:${palette[index % palette.length]}"></span>
             <span>${row.name}</span>
-            <strong>${pct.format(percentOfTotal(total, row.value))}</strong>
+            <strong>${pct.format(percentOfRevenue(unit, row.value))}</strong>
           </div>
         `).join("")}
         <div class="legend-item muted">
           <span class="swatch" style="background:${neutral}"></span>
           <span>Outros custos</span>
-          <strong>${pct.format(percentOfTotal(total, remaining))}</strong>
+          <strong>${pct.format(percentOfRevenue(unit, remaining))}</strong>
         </div>
       </div>
     </div>
