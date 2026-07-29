@@ -676,6 +676,87 @@ function renderAccountingNote(unit) {
   `;
 }
 
+function transferTotal() {
+  return (window.financeDataset.transferAdjustments || [])
+    .reduce((sum, transfer) => sum + (transfer.totalCost || 0), 0);
+}
+
+function transferScenario(unit, direction, transferValue) {
+  if (!unit || !transferValue) return null;
+  const currentCmv = categoryValue(unit, "cmv");
+  const currentExpenses = displayExpenses(unit);
+  const currentProfit = displayProfit(unit);
+  const withoutCmv = direction === "from" ? currentCmv + transferValue : currentCmv - transferValue;
+  const withoutExpenses = direction === "from" ? currentExpenses + transferValue : currentExpenses - transferValue;
+  const withoutProfit = direction === "from" ? currentProfit - transferValue : currentProfit + transferValue;
+
+  return {
+    name: unit.name,
+    currentCmv,
+    currentExpenses,
+    currentProfit,
+    withoutCmv,
+    withoutExpenses,
+    withoutProfit,
+    currentCmvRate: percentOfRevenue(unit, currentCmv),
+    withoutCmvRate: percentOfRevenue(unit, withoutCmv),
+    currentProfitRate: percentOfRevenue(unit, currentProfit),
+    withoutProfitRate: percentOfRevenue(unit, withoutProfit)
+  };
+}
+
+function renderTransferImpact() {
+  const container = document.querySelector("#transferImpact");
+  const amount = transferTotal();
+  const definition = currentDefinition();
+  const shouldShow = amount > 0 && definition.unitIds.some((id) => id === "barra" || id === "leblon");
+  if (!shouldShow) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+
+  const units = getUnits();
+  const barra = transferScenario(units.find((unit) => unit.id === "barra"), "from", amount);
+  const leblon = transferScenario(units.find((unit) => unit.id === "leblon"), "to", amount);
+  const rows = [barra, leblon].filter(Boolean);
+
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="panel-title compact-title">
+      <div>
+        <p class="eyebrow">Transferencias internas</p>
+        <h2>Mercadorias produzidas na Barra e usadas no Leblon</h2>
+      </div>
+      <strong class="transfer-total">${money.format(amount)}</strong>
+    </div>
+    <div class="transfer-grid">
+      ${rows.map((row) => `
+        <article class="transfer-card">
+          <div class="transfer-card-head">
+            <strong>${row.name}</strong>
+            <span>${row.name === "Barra" ? "deduzido da Barra" : "adicionado ao Leblon"}</span>
+          </div>
+          <div class="transfer-columns">
+            <div>
+              <small>Sem transferencia</small>
+              <strong>${money.format(row.withoutProfit)}</strong>
+              <span>lucro ${pct.format(row.withoutProfitRate)}</span>
+              <span>CMV ${money.format(row.withoutCmv)} · ${pct.format(row.withoutCmvRate)}</span>
+            </div>
+            <div>
+              <small>Com transferencia</small>
+              <strong>${money.format(row.currentProfit)}</strong>
+              <span>lucro ${pct.format(row.currentProfitRate)}</span>
+              <span>CMV ${money.format(row.currentCmv)} · ${pct.format(row.currentCmvRate)}</span>
+            </div>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderBars(units) {
   const max = Math.max(...units.flatMap((unit) => [displayRevenue(unit), displayExpenses(unit), Math.abs(displayProfit(unit))]), 1);
   document.querySelector("#barChart").innerHTML = units
@@ -1821,6 +1902,7 @@ function render() {
   renderUnitSummary(units);
   renderHealthBenchmarks(unit);
   renderAccountingNote(unit);
+  renderTransferImpact();
   renderUnitNotes();
   renderBars(units);
   renderCostMix(unit);

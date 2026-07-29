@@ -201,6 +201,70 @@ main {
   margin-top: 12px;
 }
 
+.transfer-panel {
+  margin-top: 12px;
+}
+
+.transfer-panel[hidden] {
+  display: none;
+}
+
+.transfer-total {
+  color: var(--mustard);
+  font-size: 1.2rem;
+}
+
+.transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.transfer-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  background: linear-gradient(180deg, var(--panel-soft), #161b24);
+}
+
+.transfer-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.transfer-card-head strong {
+  color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.transfer-card-head span,
+.transfer-columns small,
+.transfer-columns span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.transfer-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.transfer-columns > div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(11, 15, 23, 0.45);
+}
+
+.transfer-columns strong {
+  color: var(--ink);
+  font-size: 1.35rem;
+}
+
 .unit-notes-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1403,6 +1467,7 @@ button.metric.active {
   .unit-summary-grid,
   .health-grid,
   .unit-notes-grid,
+  .transfer-grid,
   .note-grid,
   .bank-summary-grid,
   .bank-compare,
@@ -1444,6 +1509,10 @@ button.metric.active {
   .legend-item em {
     grid-column: 2 / 4;
     text-align: left;
+  }
+
+  .transfer-columns {
+    grid-template-columns: 1fr;
   }
 
   .unit-cost-title {
