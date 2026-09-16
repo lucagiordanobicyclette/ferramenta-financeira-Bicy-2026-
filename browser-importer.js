@@ -732,6 +732,8 @@ function isFinancialApplicationAccount(account) {
       || normalized.includes("aplicacoes")
       || normalized.includes("aplicacao financeira")
       || normalized.includes("aplicacoes financeiras")
+      || normalized.includes("investimento financeiro")
+      || normalized.includes("investimentos financeiros")
     )
   );
 }
