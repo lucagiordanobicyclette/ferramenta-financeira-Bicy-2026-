@@ -1832,22 +1832,40 @@ function renderEvolution() {
       netProfitRate: healthMetricRate(view, "netProfit")
     };
   });
+  const importedCount = state.comparisonPackages.length;
+  const loadedMonths = rows.map((row) => row.month).join(", ");
 
   container.innerHTML = `
+    <div class="annual-export-guide">
+      <div>
+        <p class="eyebrow">Tabela anual consolidada</p>
+        <h3>Monte uma unica tabela com todos os meses</h3>
+        <span>Meses carregados: ${loadedMonths || "somente o mes atual"}</span>
+      </div>
+      <ol>
+        <li>Exporte e guarde o pacote de cada mes.</li>
+        <li>Importe aqui os pacotes dos meses anteriores.</li>
+        <li>Depois exporte a tabela Excel anual consolidada.</li>
+      </ol>
+    </div>
     <div class="evolution-actions">
       <button class="unit-button active" id="exportPackage" type="button">Exportar pacote do mes</button>
-      <button class="unit-button" id="exportExcelTable" type="button">Exportar em tabela Excel</button>
       <label class="unit-button import-package">
-        Importar meses anteriores
+        Importar pacotes anteriores
         <input id="importPackages" type="file" accept=".json,.financeiro.json,application/json" multiple>
       </label>
+      <button class="unit-button" id="exportExcelTable" type="button">Exportar tabela anual Excel</button>
       ${state.comparisonPackages.length ? `<button class="unit-button" id="clearPackages" type="button">Limpar importados</button>` : ""}
+    </div>
+    <div class="loaded-packages">
+      <strong>${rows.length}</strong>
+      <span>${rows.length === 1 ? "mes na tabela" : "meses na tabela"}${importedCount ? `, incluindo ${importedCount} pacote${importedCount === 1 ? "" : "s"} anterior${importedCount === 1 ? "" : "es"}` : ""}.</span>
     </div>
 
     ${rows.length < 2 ? `
       <div class="evolution-placeholder">
         <strong>Pronto para comparar.</strong>
-        <span>Importe um ou mais pacotes de meses anteriores para comparar faturamento, despesas, CMV, pessoal, ocupacao, lucro, ponto de equilibrio e diferenca bancaria.</span>
+        <span>Importe um ou mais pacotes de meses anteriores antes de exportar a tabela anual. Assim a planilha sai com o mes atual e todos os meses historicos na mesma tabela.</span>
       </div>
     ` : `
       <div class="evolution-sparks">

@@ -1169,6 +1169,50 @@ button.metric.active {
   text-decoration: none;
 }
 
+.annual-export-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid rgba(216, 189, 88, 0.38);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(216, 189, 88, 0.12), rgba(35, 47, 68, 0.46));
+}
+
+.annual-export-guide h3 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.annual-export-guide span,
+.annual-export-guide li {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.annual-export-guide ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.loaded-packages {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.loaded-packages strong {
+  color: var(--accent);
+}
+
 .evolution-placeholder {
   display: grid;
   gap: 6px;
@@ -1201,6 +1245,12 @@ button.metric.active {
 
 .import-package input {
   display: none;
+}
+
+@media (max-width: 760px) {
+  .annual-export-guide {
+    grid-template-columns: 1fr;
+  }
 }
 
 .evolution-table {
