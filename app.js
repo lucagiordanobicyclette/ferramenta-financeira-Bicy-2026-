@@ -22,6 +22,7 @@ const labels = {
   commissions: "Comissoes e tarifas",
   thirdParty: "Servicos de terceiros",
   nonOperational: "Nao operacional",
+  financialApplications: "Aplicacoes financeiras",
   publicity: "Publicidade",
   useAndConsumption: "Uso e consumo",
   operationalMaterial: "Material operacional",
@@ -114,6 +115,10 @@ function profitDistribution(unit) {
   return unit.categories.profitDistribution || 0;
 }
 
+function financialApplications(unit) {
+  return unit.categories.financialApplications || 0;
+}
+
 function displayRevenue(unit) {
   return unit.revenue;
 }
@@ -124,6 +129,14 @@ function displayExpenses(unit) {
 
 function displayProfit(unit) {
   return displayRevenue(unit) - displayExpenses(unit);
+}
+
+function expensesWithoutFinancialApplications(unit) {
+  return Math.max(displayExpenses(unit) - financialApplications(unit), 0);
+}
+
+function profitWithoutFinancialApplications(unit) {
+  return displayRevenue(unit) - expensesWithoutFinancialApplications(unit);
 }
 
 function displayCashResult(unit) {
@@ -661,6 +674,7 @@ function renderAccountingNote(unit) {
   const nonOperational = unit.categories.nonOperational || 0;
   const operational = unit.operationalExpenses || 0;
   const distribution = profitDistribution(unit);
+  const applications = financialApplications(unit);
   document.querySelector("#accountingNote").innerHTML = `
     <div class="panel-title compact-title">
       <div>
@@ -671,6 +685,7 @@ function renderAccountingNote(unit) {
     <div class="note-grid">
       <p><strong>Parte superior</strong> usa os relatorios por caixa: faturamento, despesas, lucro real, categorias e ponto de equilibrio.</p>
       <p><strong>Conferencia bancaria</strong> compara o resultado de caixa do relatorio com os extratos. Aqui no caixa: ${money.format(operational)} operacionais + ${money.format(nonOperational)} nao operacionais.</p>
+      <p><strong>Aplicacoes financeiras</strong> ficam separadas das despesas operacionais${applications ? ` (${money.format(applications)} nesta visao)` : ""}; sem elas, o lucro operacional fica em ${money.format(profitWithoutFinancialApplications(unit))}.</p>
       <p><strong>Nao operacional</strong> inclui itens como investimentos, obras/equipamentos e distribuicao de lucros${distribution ? ` (${money.format(distribution)} nesta visao)` : ""}.</p>
     </div>
   `;
@@ -830,7 +845,8 @@ function categoryGroup(key) {
     occupancy: "Ocupacao",
     thirdParty: "Terceiros",
     operationalMaterial: "Material operacional",
-    nonOperational: "Nao operacional"
+    nonOperational: "Nao operacional",
+    financialApplications: "Aplicacoes financeiras"
   }[key];
 }
 
@@ -1607,7 +1623,10 @@ function exportMetricRows(unit) {
   return [
     { section: "Caixa", metric: "Receitas Sistema", value: displayRevenue(unit), rate: displayRevenue(unit) > 0 ? 1 : 0, kind: "revenue" },
     { section: "Caixa", metric: "Despesas Sistema", value: displayExpenses(unit), rate: percentOfRevenue(unit, displayExpenses(unit)), kind: "expense" },
+    { section: "Caixa", metric: "Aplicacoes financeiras", value: financialApplications(unit), rate: percentOfRevenue(unit, financialApplications(unit)), kind: "bank" },
+    { section: "Caixa", metric: "Despesas sem aplicacoes financeiras", value: expensesWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, expensesWithoutFinancialApplications(unit)), kind: "expense" },
     { section: "Caixa", metric: "Lucro operacional", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
+    { section: "Caixa", metric: "Lucro sem aplicacoes financeiras", value: profitWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, profitWithoutFinancialApplications(unit)), kind: "profit" },
     { section: "Caixa", metric: "CMV", value: healthMetricValue(unit, "cmv"), rate: healthMetricRate(unit, "cmv"), kind: "indicator" },
     { section: "Caixa", metric: "Ocupacao", value: healthMetricValue(unit, "occupancy"), rate: healthMetricRate(unit, "occupancy"), kind: "indicator" },
     { section: "Caixa", metric: "Pessoal", value: healthMetricValue(unit, "people"), rate: healthMetricRate(unit, "people"), kind: "indicator" },

@@ -26,6 +26,7 @@ const GROUP_NAMES = {
   occupancy: "Ocupacao",
   thirdParty: "Terceiros",
   nonOperational: "Nao operacional",
+  financialApplications: "Aplicacoes financeiras",
   publicity: "Publicidade",
   useAndConsumption: "Uso e consumo",
   operationalMaterial: "Material operacional",
@@ -719,6 +720,42 @@ function parsedProfitDistribution(accounts, byCode) {
     .reduce((sum, account) => sum + account.value, 0);
 }
 
+function isFinancialApplicationAccount(account) {
+  const normalized = normalizeText(account.name)
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (
+    account.code.startsWith("02")
+    && (
+      normalized.includes("aplicacao")
+      || normalized.includes("aplicacoes")
+      || normalized.includes("aplicacao financeira")
+      || normalized.includes("aplicacoes financeiras")
+    )
+  );
+}
+
+function matchingDeepestAccounts(accounts, predicate) {
+  return accounts
+    .filter(predicate)
+    .filter((account) => !accounts.some((candidate) =>
+      candidate.code !== account.code
+      && candidate.code.startsWith(account.code)
+      && predicate(candidate)
+    ));
+}
+
+function parsedFinancialApplications(accounts) {
+  return matchingDeepestAccounts(accounts, isFinancialApplicationAccount)
+    .reduce((sum, account) => sum + account.value, 0);
+}
+
+function financialApplicationRows(accounts) {
+  return matchingDeepestAccounts(accounts, isFinancialApplicationAccount)
+    .map((account) => rowTree(accounts, account));
+}
+
 function detailRows(accounts, unitId) {
   const rows = [];
   const split = splitCmvRows(accounts);
@@ -749,6 +786,14 @@ function detailRows(accounts, unitId) {
     });
   });
 
+  financialApplicationRows(accounts).forEach((account) => {
+    rows.push({
+      group: GROUP_NAMES.financialApplications,
+      name: account.name,
+      value: account.value
+    });
+  });
+
   return rows;
 }
 
@@ -771,6 +816,7 @@ function categoryDetails(accounts, unitId) {
     ...categoryRows(accounts, EXTRA_CATEGORY_ROOTS.operationalMaterial),
     ...split.operationalMaterial
   ];
+  details.financialApplications = financialApplicationRows(accounts);
   return details;
 }
 
@@ -967,11 +1013,14 @@ function baseTotals(accounts) {
 
 function baseCategories(accounts) {
   const byCode = accountMap(accounts);
-  return {
+  const financialApplications = parsedFinancialApplications(accounts);
+  const categories = {
     ...Object.fromEntries(Object.entries(CATEGORY_ROOTS).map(([key, root]) => [key, valueOf(byCode, root)])),
     ...Object.fromEntries(Object.entries(EXTRA_CATEGORY_ROOTS).map(([key, root]) => [key, valueOf(byCode, root)])),
-    profitDistribution: parsedProfitDistribution(accounts, byCode)
+    profitDistribution: parsedProfitDistribution(accounts, byCode),
+    financialApplications
   };
+  return categories;
 }
 
 function buildUnit(month, unitId, reportFile, reportAccounts, bankAccounts) {
@@ -1225,6 +1274,7 @@ export async function buildFinancePackage({
         "Analise gerencial da parte superior feita pelos relatorios de caixa.",
         "Conferencia bancaria feita pelos mesmos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
         "Transferencias Barra para Leblon ajustam CMV: reduzem CMV/despesas da Barra e aumentam CMV/despesas do Leblon pelo custo total transferido.",
+        "Aplicacoes financeiras sao discriminadas dentro de nao operacional para separar caixa aplicado da leitura operacional.",
         "Ponto de equilibrio estimado com CMV, impostos e comissoes/tarifas como custos variaveis; CMV inclui comida, embalagens e descartaveis. Motoboy fica em custos fixos."
       ],
       ignoredBankFiles,
