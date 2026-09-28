@@ -498,7 +498,7 @@ function currentPackage() {
   const hierarchyName = "financeHierarchy" + month.replace("-", "");
   return {
     version: 3,
-    importModel: "competence-cash-v3",
+    importModel: "cash-v4",
     type: "la-bicyclette-financeiro",
     month,
     dataset: window.financeDataset,
@@ -679,11 +679,11 @@ function renderAccountingNote(unit) {
     <div class="panel-title compact-title">
       <div>
         <p class="eyebrow">Leitura dos numeros</p>
-        <h2>Competencia em cima, caixa na conferencia bancaria</h2>
+        <h2>Caixa em cima, caixa na conferencia bancaria</h2>
       </div>
     </div>
     <div class="note-grid">
-      <p><strong>Parte superior</strong> usa os relatorios por competencia: faturamento, despesas, lucro real, categorias e ponto de equilibrio.</p>
+      <p><strong>Parte superior</strong> usa os relatorios por caixa: faturamento, despesas, lucro real, categorias e ponto de equilibrio.</p>
       <p><strong>Conferencia bancaria</strong> compara o resultado de caixa do relatorio com os extratos. Aqui no caixa: ${money.format(operational)} operacionais + ${money.format(nonOperational)} nao operacionais.</p>
       <p><strong>Aplicacoes financeiras</strong> ficam separadas das despesas operacionais${applications ? ` (${money.format(applications)} nesta visao)` : ""}; sem elas, o lucro operacional fica em ${money.format(profitWithoutFinancialApplications(unit))}.</p>
       <p><strong>Nao operacional</strong> inclui itens como investimentos, obras/equipamentos e distribuicao de lucros${distribution ? ` (${money.format(distribution)} nesta visao)` : ""}.</p>
@@ -1621,23 +1621,23 @@ function exportMetricRows(unit) {
   const bankVariation = bank.closingBalance - bank.openingBalance;
   const bankDifference = bankVariation - displayCashResult(unit);
   return [
-    { section: "Competencia", metric: "Receitas Sistema", value: displayRevenue(unit), rate: displayRevenue(unit) > 0 ? 1 : 0, kind: "revenue" },
-    { section: "Competencia", metric: "Despesas Sistema", value: displayExpenses(unit), rate: percentOfRevenue(unit, displayExpenses(unit)), kind: "expense" },
-    { section: "Competencia", metric: "Aplicacoes financeiras", value: financialApplications(unit), rate: percentOfRevenue(unit, financialApplications(unit)), kind: "bank" },
-    { section: "Competencia", metric: "Despesas sem aplicacoes financeiras", value: expensesWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, expensesWithoutFinancialApplications(unit)), kind: "expense" },
-    { section: "Competencia", metric: "Lucro operacional", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
-    { section: "Competencia", metric: "Lucro sem aplicacoes financeiras", value: profitWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, profitWithoutFinancialApplications(unit)), kind: "profit" },
-    { section: "Competencia", metric: "CMV", value: healthMetricValue(unit, "cmv"), rate: healthMetricRate(unit, "cmv"), kind: "indicator" },
-    { section: "Competencia", metric: "Ocupacao", value: healthMetricValue(unit, "occupancy"), rate: healthMetricRate(unit, "occupancy"), kind: "indicator" },
-    { section: "Competencia", metric: "Pessoal", value: healthMetricValue(unit, "people"), rate: healthMetricRate(unit, "people"), kind: "indicator" },
-    { section: "Competencia", metric: "Extras e dobras", value: healthMetricValue(unit, "extras"), rate: healthMetricRate(unit, "extras"), kind: "indicator" },
-    { section: "Competencia", metric: "Distribuicao de lucros", value: profitDistribution(unit), rate: percentOfRevenue(unit, profitDistribution(unit)), kind: "expense" },
-    { section: "Competencia", metric: "Impostos", value: healthMetricValue(unit, "taxes"), rate: healthMetricRate(unit, "taxes"), kind: "indicator" },
-    { section: "Competencia", metric: "Servicos de terceiros", value: healthMetricValue(unit, "thirdParty"), rate: healthMetricRate(unit, "thirdParty"), kind: "indicator" },
-    { section: "Competencia", metric: "Marketing / redes sociais", value: healthMetricValue(unit, "marketing"), rate: healthMetricRate(unit, "marketing"), kind: "indicator" },
-    { section: "Competencia", metric: "Contas de consumo", value: healthMetricValue(unit, "consumption"), rate: healthMetricRate(unit, "consumption"), kind: "indicator" },
-    { section: "Competencia", metric: "Ponto de equilibrio", value: breakEven(unit), rate: contributionMargin(unit), kind: "neutral" },
-    { section: "Competencia", metric: "Lucro operacional R$", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
+    { section: "Caixa", metric: "Receitas Sistema", value: displayRevenue(unit), rate: displayRevenue(unit) > 0 ? 1 : 0, kind: "revenue" },
+    { section: "Caixa", metric: "Despesas Sistema", value: displayExpenses(unit), rate: percentOfRevenue(unit, displayExpenses(unit)), kind: "expense" },
+    { section: "Caixa", metric: "Aplicacoes financeiras", value: financialApplications(unit), rate: percentOfRevenue(unit, financialApplications(unit)), kind: "bank" },
+    { section: "Caixa", metric: "Despesas sem aplicacoes financeiras", value: expensesWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, expensesWithoutFinancialApplications(unit)), kind: "expense" },
+    { section: "Caixa", metric: "Lucro operacional", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
+    { section: "Caixa", metric: "Lucro sem aplicacoes financeiras", value: profitWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, profitWithoutFinancialApplications(unit)), kind: "profit" },
+    { section: "Caixa", metric: "CMV", value: healthMetricValue(unit, "cmv"), rate: healthMetricRate(unit, "cmv"), kind: "indicator" },
+    { section: "Caixa", metric: "Ocupacao", value: healthMetricValue(unit, "occupancy"), rate: healthMetricRate(unit, "occupancy"), kind: "indicator" },
+    { section: "Caixa", metric: "Pessoal", value: healthMetricValue(unit, "people"), rate: healthMetricRate(unit, "people"), kind: "indicator" },
+    { section: "Caixa", metric: "Extras e dobras", value: healthMetricValue(unit, "extras"), rate: healthMetricRate(unit, "extras"), kind: "indicator" },
+    { section: "Caixa", metric: "Distribuicao de lucros", value: profitDistribution(unit), rate: percentOfRevenue(unit, profitDistribution(unit)), kind: "expense" },
+    { section: "Caixa", metric: "Impostos", value: healthMetricValue(unit, "taxes"), rate: healthMetricRate(unit, "taxes"), kind: "indicator" },
+    { section: "Caixa", metric: "Servicos de terceiros", value: healthMetricValue(unit, "thirdParty"), rate: healthMetricRate(unit, "thirdParty"), kind: "indicator" },
+    { section: "Caixa", metric: "Marketing / redes sociais", value: healthMetricValue(unit, "marketing"), rate: healthMetricRate(unit, "marketing"), kind: "indicator" },
+    { section: "Caixa", metric: "Contas de consumo", value: healthMetricValue(unit, "consumption"), rate: healthMetricRate(unit, "consumption"), kind: "indicator" },
+    { section: "Caixa", metric: "Ponto de equilibrio", value: breakEven(unit), rate: contributionMargin(unit), kind: "neutral" },
+    { section: "Caixa", metric: "Lucro operacional R$", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
     { section: "Caixa / conferencia bancaria", metric: "Resultado caixa do relatorio", value: displayCashResult(unit), rate: null, kind: "profit" },
     { section: "Caixa / conferencia bancaria", metric: "Saldo inicial banco", value: bank.openingBalance, rate: null, kind: "bank" },
     { section: "Caixa / conferencia bancaria", metric: "Entradas banco", value: bank.credits, rate: null, kind: "revenue" },
@@ -1686,7 +1686,7 @@ function exportObservationCells(packagesByMonth, definition) {
 
 function exportUnitTable(packagesByMonth, definition) {
   const currentRows = exportMetricRows(exportView(currentPackage(), definition));
-  const competenceRows = currentRows.filter((row) => row.section === "Competencia");
+  const competenceRows = currentRows.filter((row) => row.section === "Caixa");
   const bankRows = currentRows.filter((row) => row.section === "Caixa / conferencia bancaria");
   const columnSpan = 1 + exportMonths.length * 2;
 

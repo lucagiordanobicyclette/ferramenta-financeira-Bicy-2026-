@@ -1025,7 +1025,7 @@ function baseCategories(accounts) {
   return categories;
 }
 
-function buildUnit(month, unitId, reportFile, reportAccounts, cashFile, cashAccounts, bankAccounts) {
+function buildUnit(month, unitId, reportFile, reportAccounts, bankAccounts) {
   const { revenue, operational } = baseTotals(reportAccounts);
   const reportTotals = baseTotals(reportAccounts);
   const split = splitCmvRows(reportAccounts);
@@ -1040,7 +1040,7 @@ function buildUnit(month, unitId, reportFile, reportAccounts, cashFile, cashAcco
   };
   const expenses = reportTotals.expenses;
 
-  const cashTotals = baseTotals(cashAccounts);
+  const cashTotals = baseTotals(reportAccounts);
   const cashRevenue = cashTotals.revenue;
   const cashExpenses = cashTotals.expenses;
 
@@ -1056,7 +1056,7 @@ function buildUnit(month, unitId, reportFile, reportAccounts, cashFile, cashAcco
     name: UNIT_NAMES[unitId],
     month,
     source: reportFile.name,
-    cashSource: cashFile.name,
+    cashSource: reportFile.name,
     revenue: Number(revenue.toFixed(2)),
     expenses: Number(expenses.toFixed(2)),
     operationalExpenses: Number(operational.toFixed(2)),
@@ -1171,45 +1171,26 @@ export async function buildFinancePackage({
   onProgress
 }) {
   const legacyReportFiles = reportFiles || {};
-  const competenceEntries = COMPETENCE_REPORT_ENTRIES.map(([unitId, field]) => [
-    unitId,
-    competenceReportFiles?.[field]
-      || legacyReportFiles[field.replace("competence_", "")]
-  ]);
   const cashEntries = CASH_REPORT_ENTRIES.map(([unitId, field]) => [
     unitId,
     cashReportFiles?.[field]
       || legacyReportFiles[field.replace("cash_", "")]
+      || competenceReportFiles?.[field.replace("cash_", "competence_")]
   ]);
 
   const missing = [
-    ...competenceEntries.filter(([, file]) => !file || file.size === 0).map(([unitId]) => `${SOURCE_LABELS[unitId]} de competencia`),
     ...cashEntries.filter(([, file]) => !file || file.size === 0).map(([unitId]) => `${SOURCE_LABELS[unitId]} de caixa`)
   ];
   if (missing.length) {
     throw new Error(`Faltam arquivos obrigatorios: ${missing.join(", ")}`);
   }
 
-  const totalSteps = competenceEntries.length + cashEntries.length + bankFiles.length + transferFiles.length;
+  const totalSteps = cashEntries.length + bankFiles.length + transferFiles.length;
   let step = 0;
   const advance = (message) => {
     step += 1;
     onProgress?.(`${message} (${step}/${totalSteps})`);
   };
-
-  const competenceData = {};
-  for (const [fallbackUnitId, file] of competenceEntries) {
-    const text = await extractReportText(file, pdfjsLib, onProgress);
-    const unitId = fallbackUnitId;
-    const accounts = parseAccounts(text);
-    assertReadableReport("competencia", unitId, file, accounts);
-    competenceData[unitId] = {
-      file,
-      accounts,
-      detectedUnitId: inferUnitFromDocument(file, text) || ""
-    };
-    advance(`Lendo competencia: ${SOURCE_LABELS[unitId]}`);
-  }
 
   const cashData = {};
   for (const [fallbackUnitId, file] of cashEntries) {
@@ -1225,7 +1206,7 @@ export async function buildFinancePackage({
     advance(`Lendo caixa: ${SOURCE_LABELS[unitId]}`);
   }
 
-  const missingAfterInference = Object.keys(UNIT_NAMES).filter((unitId) => !competenceData[unitId] || !cashData[unitId]);
+  const missingAfterInference = Object.keys(UNIT_NAMES).filter((unitId) => !cashData[unitId]);
   if (missingAfterInference.length) {
     throw new Error(`Faltam relatorios obrigatorios para: ${missingAfterInference.map((unitId) => UNIT_NAMES[unitId]).join(", ")}`);
   }
@@ -1259,8 +1240,6 @@ export async function buildFinancePackage({
     buildUnit(
       month,
       unitId,
-      competenceData[unitId].file,
-      competenceData[unitId].accounts,
       cashData[unitId].file,
       cashData[unitId].accounts,
       bankAccounts
@@ -1272,7 +1251,7 @@ export async function buildFinancePackage({
   if (zeroUnits.length) {
     throw new Error(
       `A importacao gerou valores zerados para: ${zeroUnits.map((unit) => unit.name).join(", ")}. ` +
-      "Nada foi salvo; confira se os arquivos selecionados sao os relatorios completos por competencia e caixa."
+      "Nada foi salvo; confira se os arquivos selecionados sao os relatorios completos por caixa."
     );
   }
 
@@ -1286,7 +1265,7 @@ export async function buildFinancePackage({
 
   return {
     version: 3,
-    importModel: "competence-cash-v3",
+    importModel: "cash-v4",
     type: "la-bicyclette-financeiro",
     month,
     dataset: {
@@ -1294,8 +1273,8 @@ export async function buildFinancePackage({
       months: [month],
       notes: [
         "Importacao feita no navegador a partir dos PDFs selecionados.",
-        "Analise gerencial da parte superior feita pelos relatorios de competencia.",
-        "Conferencia bancaria feita pelos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
+        "Analise gerencial da parte superior feita pelos relatorios de caixa.",
+        "Conferencia bancaria feita pelos mesmos relatorios de caixa comparados aos extratos reconhecidos pelo parser.",
         "Transferencias Barra para Leblon ajustam CMV: reduzem CMV/despesas da Barra e aumentam CMV/despesas do Leblon pelo custo total transferido.",
         "Aplicacoes financeiras sao discriminadas dentro de nao operacional para separar caixa aplicado da leitura operacional.",
         "Ponto de equilibrio estimado com CMV, impostos e comissoes/tarifas como custos variaveis; CMV inclui comida, embalagens e descartaveis. Motoboy fica em custos fixos."
