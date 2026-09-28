@@ -51,6 +51,21 @@ const OPERATIONAL_MATERIAL_PATTERNS = [
   "material de apoio"
 ];
 
+const FINANCIAL_APPLICATION_PATTERNS = [
+  "aplicacao",
+  "aplicacoes",
+  "aplicacao financeira",
+  "aplicacoes financeiras",
+  "aplic financ",
+  "aplicacao banc",
+  "aplicacoes banc",
+  "investimento",
+  "investimentos",
+  "investimento financeiro",
+  "investimentos financeiros",
+  "invest facil"
+];
+
 const ACCOUNT_NAME_OVERRIDES = {
   "01": "Receitas",
   "0101": "Receita operacional",
@@ -719,14 +734,10 @@ function isFinancialApplicationAccount(account) {
     .replace(/\s+/g, " ")
     .trim();
   return (
-    account.code.startsWith("02")
-    && (
-      normalized.includes("aplicacao")
-      || normalized.includes("aplicacoes")
-      || normalized.includes("aplicacao financeira")
-      || normalized.includes("aplicacoes financeiras")
-      || normalized.includes("investimento financeiro")
-      || normalized.includes("investimentos financeiros")
+    (account.code === EXTRA_CATEGORY_ROOTS.investments || account.code.startsWith(`${EXTRA_CATEGORY_ROOTS.investments}`))
+    || (
+      account.code.startsWith("02")
+      && FINANCIAL_APPLICATION_PATTERNS.some((pattern) => normalized.includes(normalizeText(pattern)))
     )
   );
 }

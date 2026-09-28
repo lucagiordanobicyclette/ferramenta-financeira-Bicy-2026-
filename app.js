@@ -116,7 +116,7 @@ function profitDistribution(unit) {
 }
 
 function financialApplications(unit) {
-  return unit.categories.financialApplications || 0;
+  return Math.max(unit.categories.financialApplications || 0, unit.categories.investments || 0);
 }
 
 function displayRevenue(unit) {
@@ -1623,7 +1623,7 @@ function exportMetricRows(unit) {
   return [
     { section: "Caixa", metric: "Receitas Sistema", value: displayRevenue(unit), rate: displayRevenue(unit) > 0 ? 1 : 0, kind: "revenue" },
     { section: "Caixa", metric: "Despesas Sistema", value: displayExpenses(unit), rate: percentOfRevenue(unit, displayExpenses(unit)), kind: "expense" },
-    { section: "Caixa", metric: "Aplicacoes financeiras", value: financialApplications(unit), rate: percentOfRevenue(unit, financialApplications(unit)), kind: "bank" },
+    { section: "Caixa", metric: "Aplicacoes / investimentos financeiros", value: financialApplications(unit), rate: null, kind: "bank" },
     { section: "Caixa", metric: "Despesas sem aplicacoes financeiras", value: expensesWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, expensesWithoutFinancialApplications(unit)), kind: "expense" },
     { section: "Caixa", metric: "Lucro operacional", value: displayProfit(unit), rate: percentOfRevenue(unit, displayProfit(unit)), kind: "profit" },
     { section: "Caixa", metric: "Lucro sem aplicacoes financeiras", value: profitWithoutFinancialApplications(unit), rate: percentOfRevenue(unit, profitWithoutFinancialApplications(unit)), kind: "profit" },
