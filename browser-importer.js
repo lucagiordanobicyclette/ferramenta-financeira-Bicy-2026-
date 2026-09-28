@@ -93,13 +93,6 @@ const SOURCE_LABELS = {
   "jb-delivery": "Relatorio JB Delivery Filial"
 };
 
-const COMPETENCE_REPORT_ENTRIES = [
-  ["barra", "competence_report_barra"],
-  ["leblon", "competence_report_leblon"],
-  ["jb-loja", "competence_report_jb_loja"],
-  ["jb-delivery", "competence_report_jb_delivery"]
-];
-
 const CASH_REPORT_ENTRIES = [
   ["barra", "cash_report_barra"],
   ["leblon", "cash_report_leblon"],
@@ -1163,7 +1156,6 @@ function assertReadableReport(kind, unitId, file, accounts) {
 export async function buildFinancePackage({
   month,
   reportFiles,
-  competenceReportFiles,
   cashReportFiles,
   bankFiles,
   transferFiles = [],
@@ -1175,7 +1167,6 @@ export async function buildFinancePackage({
     unitId,
     cashReportFiles?.[field]
       || legacyReportFiles[field.replace("cash_", "")]
-      || competenceReportFiles?.[field.replace("cash_", "competence_")]
   ]);
 
   const missing = [

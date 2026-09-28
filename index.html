@@ -138,7 +138,7 @@
         const raw = localStorage.getItem(uploadPackageKey(month, runId));
         if (!raw) return false;
         const payload = JSON.parse(raw);
-        if (!["cash-v4", "competence-cash-v3"].includes(payload.importModel)) return false;
+        if (payload.importModel !== "cash-v4") return false;
         const units = payload.dataset?.units || [];
         const unreadableUnits = units.filter((unit) => !unit.revenue || !unit.expenses);
         if (units.length < 4 || unreadableUnits.length) {
