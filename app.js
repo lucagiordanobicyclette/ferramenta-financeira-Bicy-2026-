@@ -1302,13 +1302,64 @@ function renderAnalysis(unit) {
 
 function bankTotals(unit) {
   const accounts = unit.bankAccounts || [];
+  const internal = accounts.reduce((sum, account) => sum + (account.confirmedInternalTransfers || 0), 0);
   return {
     accounts,
     openingBalance: accounts.reduce((sum, account) => sum + account.openingBalance, 0),
-    credits: accounts.reduce((sum, account) => sum + account.credits, 0),
-    debits: accounts.reduce((sum, account) => sum + account.debits, 0),
+    credits: accounts.reduce((sum, account) => sum + account.credits, 0) - internal,
+    debits: accounts.reduce((sum, account) => sum + account.debits, 0) - internal,
     closingBalance: accounts.reduce((sum, account) => sum + account.closingBalance, 0)
   };
+}
+
+const reconciliationMoney = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function renderMercadoPagoReconciliation(visibleUnitIds) {
+  const data = window.financeDataset.mercadoPago;
+  if (!data) return "";
+  const transfers = {
+    matched: "Transferência interna conciliada",
+    review: "Possível entrada no Itaú. Conferir o comprovante",
+    outside: "Aguardando extrato do Itaú que cubra a data",
+    pending: "Saída no Mercado Pago sem entrada correspondente no Itaú"
+  };
+  const accounts = data.accounts.filter((account) => visibleUnitIds.has(account.unitId));
+  const warnings = data.warnings.filter((warning) => warning.unitId === "card" || visibleUnitIds.has(warning.unitId));
+  const { card } = data;
+  const unitName = (id) => window.financeDataset.units.find((unit) => unit.id === id)?.name || id;
+  return `
+    ${accounts.map((account) => {
+      const accountTransfers = data.transfers.filter((row) => row.unitId === account.unitId);
+      return `<article>
+        <strong>Recebimentos e repasses · Delivery ${account.unitId === "barra" ? "Barra" : "JB"}</strong>
+        ${account.detailsVerified ? `
+          <p>Liberações no mês: ${reconciliationMoney.format(account.released)}. Estornos: ${reconciliationMoney.format(account.reversed)}.</p>
+          ${accountTransfers.length ? accountTransfers.map((row) => `
+            <p>${escapeHtml(row.date.split("-").reverse().join("/"))} · ${reconciliationMoney.format(row.amount)} · ${transfers[row.status]}</p>
+            ${row.status === "review" ? row.candidates.map((candidate) => `<p>Itaú: ${escapeHtml(candidate.date.split("-").reverse().join("/"))} · ${escapeHtml(candidate.description)}</p>`).join("") : ""}
+          `).join("") : "<p>Nenhum repasse ao Itaú identificado no extrato da conta neste mês.</p>"}
+          <p>A conferência de vendas a receber e atrasos exige as vendas detalhadas do delivery e as liberações por venda.</p>
+        ` : "<p>Os lançamentos lidos não conferiram com os totais do extrato. A conferência de repasses está indisponível para esta conta.</p>"}
+      </article>`;
+    }).join("")}
+    ${card ? `<article>
+      <strong>Fatura do cartão de crédito Mercado Pago</strong>
+      <p>Fatura do grupo. Total: ${reconciliationMoney.format(card.total)}. Vencimento: ${escapeHtml(card.dueDate.split("-").reverse().join("/"))}.</p>
+      <details>
+        <summary>Lancamentos da fatura (${card.purchases.length})</summary>
+        ${card.purchases.map((row) => `<p>${escapeHtml(row.date)} · ${escapeHtml(row.description)} · ${reconciliationMoney.format(row.value)}</p>`).join("")}
+      </details>
+      ${card.difference ? `<p>Diferença entre os lançamentos lidos e o total da fatura: ${reconciliationMoney.format(card.difference)}.</p>` : "<p>Os lançamentos lidos somam o total da fatura.</p>"}
+      ${card.paymentCandidates.length ? `
+        <p>Possivel pagamento. Confirme o recebedor no comprovante do Pix:</p>
+        ${card.paymentCandidates.map((row) => `<p>${escapeHtml(row.date.split("-").reverse().join("/"))} · Itaú ${escapeHtml(unitName(row.unitId))} · ${escapeHtml(row.description)}</p>`).join("")}
+      ` : `<p>${card.itauCount ? "Nenhum Pix com o valor da fatura foi localizado nos extratos do Itaú importados." : "Inclua os extratos do Itaú para localizar o Pix de pagamento."}</p>`}
+      <p>Confira as compras no Linx. A fatura e o Pix servem para conferência e ficam fora dos totais de despesas do Linx.</p>
+    </article>` : ""}
+    ${warnings.map((warning) => `<article class="bank-account-warning">
+      <strong>${escapeHtml(warning.account)}</strong><p>${escapeHtml(warning.message)}</p>
+    </article>`).join("")}
+  `;
 }
 
 function renderBankReconciliation(unit, units) {
@@ -1396,16 +1447,16 @@ function renderBankReconciliation(unit, units) {
       ${totals.accounts.map((account) => `
         <article>
           <div>
-            <strong>${account.bank}</strong>
+            <strong>${escapeHtml(account.bank === "Mercado Pago" ? account.account : account.bank)}</strong>
             <span>Unidade: ${account.unitName || account.account}</span>
           </div>
           <div>
-            <span>Inicial ${money.format(account.openingBalance)}</span>
-            <span>Entradas ${money.format(account.credits)}</span>
-            <span>Saídas ${money.format(account.debits)}</span>
-            <span>Final ${money.format(account.closingBalance)}</span>
+            <span>Inicial ${reconciliationMoney.format(account.openingBalance)}</span>
+            <span>Entradas ${reconciliationMoney.format(account.credits)}</span>
+            <span>Saídas ${reconciliationMoney.format(account.debits)}</span>
+            <span>Final ${reconciliationMoney.format(account.closingBalance)}</span>
           </div>
-          <p>Arquivo: ${account.source || "extrato importado"}</p>
+          <p>Arquivo: ${escapeHtml(account.source || "extrato importado")}</p>
           ${account.note ? `<p>${account.note}</p>` : ""}
         </article>
       `).join("")}
@@ -1418,14 +1469,16 @@ function renderBankReconciliation(unit, units) {
           <div>
             <span>Extrato nao integrado</span>
           </div>
-          <p>Arquivo: ${file.source}</p>
+          <p>Arquivo: ${escapeHtml(file.source)}</p>
           <p>${file.reason}</p>
         </article>
       `).join("")}
+      ${renderMercadoPagoReconciliation(visibleUnitIds)}
     </div>
 
     <p class="bank-note">
       A comparação principal usa o resultado do relatório de caixa, com distribuição de lucros dentro das despesas, porque essa retirada também aparece como saída de dinheiro no banco.
+      ${totals.accounts.some((account) => account.bank === "Mercado Pago") ? " O saldo liberado nas contas Mercado Pago faz parte do caixa. Repasses confirmados ao Itaú são retirados das entradas e saídas consolidadas. Os saldos individuais mostram os valores originais dos extratos." : ""}
     </p>
   `;
 }

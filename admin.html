@@ -60,9 +60,35 @@
           </div>
 
           <label>
-            Extratos bancarios (PDF)
+            Extratos bancários do Itaú e Bradesco (PDF)
             <input name="bank_files" type="file" accept="application/pdf" multiple>
           </label>
+
+          <div class="upload-group">
+            <div>
+              <p class="eyebrow">Recebimentos do delivery</p>
+              <h3>Extratos das contas Mercado Pago</h3>
+            </div>
+            <label>
+              Extrato da conta Mercado Pago · Delivery Barra (PDF)
+              <input name="mercado_pago_barra" type="file" accept=".pdf,application/pdf">
+            </label>
+            <label>
+              Extrato da conta Mercado Pago · Delivery JB (PDF)
+              <input name="mercado_pago_jb" type="file" accept=".pdf,application/pdf">
+            </label>
+          </div>
+
+          <div class="upload-group">
+            <div>
+              <p class="eyebrow">Compras e pagamento da fatura</p>
+              <h3>Cartão de crédito Mercado Pago</h3>
+            </div>
+            <label>
+              Fatura do cartão de crédito Mercado Pago (PDF)
+              <input name="mercado_pago_card" type="file" accept=".pdf,application/pdf">
+            </label>
+          </div>
 
           <label>
             Transferencias Barra para Leblon (Excel)
@@ -78,7 +104,7 @@
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
-      import { buildFinancePackage } from "./browser-importer.js?v=20260928-3";
+      import { buildFinancePackage } from "./browser-importer.js?v=20261119-1";
 
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -130,12 +156,18 @@
         };
         const bankFiles = formData.getAll("bank_files").filter((file) => file.size > 0);
         const transferFiles = formData.getAll("transfer_files").filter((file) => file.size > 0);
+        const mercadoPagoFiles = {
+          barra: formData.get("mercado_pago_barra"),
+          "jb-delivery": formData.get("mercado_pago_jb"),
+          card: formData.get("mercado_pago_card")
+        };
 
         try {
           const pack = await buildFinancePackage({
             month,
             cashReportFiles,
             bankFiles,
+            mercadoPagoFiles,
             transferFiles,
             pdfjsLib,
             onProgress: (message) => {
@@ -157,10 +189,16 @@ Arquivos processados localmente; nenhum arquivo foi enviado para servidor.
 Resumo lido dos relatorios:
 ${summaryRows}
 
+<span id="mercadoPagoImportWarning" role="status"></span>
 <a class="unit-button active upload-link" href="index.html?month=${month}&source=upload&run=${runId}">Abrir dashboard do mes</a>
 <button class="unit-button upload-link" id="downloadPackage" type="button">Baixar pacote do mes</button>
           `.trim();
 
+          const warnings = pack.dataset.mercadoPago?.warnings || [];
+          if (warnings.length) {
+            document.querySelector("#mercadoPagoImportWarning").textContent =
+              warnings.map(({ account, message }) => `${account}: ${message}\n`).join("");
+          }
           document.querySelector("#downloadPackage").addEventListener("click", () => {
             downloadJson(`${month}.financeiro.json`, pack);
           });

@@ -1,3 +1,5 @@
+import { parseMercadoPagoAccount, parseMercadoPagoCard, parseItauPix, reconcileMercadoPago } from "./mercado-pago.js?v=20261119-1";
+
 const CATEGORY_ROOTS = {
   commissions: "020101",
   taxes: "020102",
@@ -1169,6 +1171,7 @@ export async function buildFinancePackage({
   reportFiles,
   cashReportFiles,
   bankFiles,
+  mercadoPagoFiles = {},
   transferFiles = [],
   pdfjsLib,
   onProgress
@@ -1187,7 +1190,8 @@ export async function buildFinancePackage({
     throw new Error(`Faltam arquivos obrigatorios: ${missing.join(", ")}`);
   }
 
-  const totalSteps = cashEntries.length + bankFiles.length + transferFiles.length;
+  const mercadoPagoEntries = Object.entries(mercadoPagoFiles).filter(([, file]) => file?.size > 0);
+  const totalSteps = cashEntries.length + bankFiles.length + mercadoPagoEntries.length + transferFiles.length;
   let step = 0;
   const advance = (message) => {
     step += 1;
@@ -1215,9 +1219,19 @@ export async function buildFinancePackage({
 
   const bankAccounts = Object.fromEntries(Object.keys(UNIT_NAMES).map((unitId) => [unitId, []]));
   const ignoredBankFiles = [];
+  const itauStatements = [];
   for (const file of bankFiles) {
     const text = await extractPdfText(file, pdfjsLib, onProgress);
+    if (/Mercado Pago Institui|fatura do seu Cart[aã]o de Cr[eé]dito Mercado Pago/i.test(text)) {
+      ignoredBankFiles.push({ source: file.name, bank: "Mercado Pago", reason: "Selecione o documento no campo da conta do delivery ou da fatura do cartao." });
+      advance(`Lendo extrato ${file.name}`);
+      continue;
+    }
     const parsed = parseBankAccount(file, text);
+    if (mercadoPagoEntries.length && parsed?.bank === "Itaú") {
+      const itau = parseItauPix(text, month);
+      if (itau.through || itau.rows.length) itauStatements.push({ unitId: parsed.unitId, ...itau });
+    }
     if (parsed) {
       bankAccounts[parsed.unitId].push(parsed);
     } else {
@@ -1231,6 +1245,36 @@ export async function buildFinancePackage({
       });
     }
     advance(`Lendo extrato ${file.name}`);
+  }
+
+  const mercadoPagoAccounts = [];
+  const mercadoPagoWarnings = [];
+  let card = null;
+  for (const [unitId, file] of mercadoPagoEntries) {
+    const account = unitId === "card" ? "Fatura do cartão de crédito Mercado Pago" : `Conta Mercado Pago · Delivery ${unitId === "barra" ? "Barra" : "JB"}`;
+    try {
+      const text = await extractPdfText(file, pdfjsLib, onProgress);
+      if (unitId === "card") {
+        card = parseMercadoPagoCard(text, month);
+      } else {
+        const { movements, detailsVerified, released, reversed, ...balances } = parseMercadoPagoAccount(text, UNIT_CNPJS[unitId], month);
+        bankAccounts[unitId].push({ ...balances, bank: "Mercado Pago", account, unitId, unitName: UNIT_NAMES[unitId], source: file.name });
+        mercadoPagoAccounts.push({ unitId, movements, detailsVerified, released, reversed });
+      }
+    } catch (error) {
+      mercadoPagoWarnings.push({ unitId, account, message: error.message });
+    }
+    advance(`Lendo ${account}`);
+  }
+  const mercadoPago = mercadoPagoEntries.length ? {
+    ...reconcileMercadoPago(mercadoPagoAccounts, itauStatements, card),
+    accounts: mercadoPagoAccounts.map(({ unitId, detailsVerified, released, reversed }) => ({ unitId, detailsVerified, released, reversed })),
+    warnings: mercadoPagoWarnings
+  } : undefined;
+  for (const transfer of mercadoPago?.transfers || []) {
+    if (transfer.status !== "matched") continue;
+    const account = bankAccounts[transfer.unitId].find((item) => item.bank === "Mercado Pago");
+    account.confirmedInternalTransfers = (account.confirmedInternalTransfers || 0) + transfer.amount;
   }
 
   const transferAdjustments = await parseTransferFiles(transferFiles, onProgress);
@@ -1282,6 +1326,7 @@ export async function buildFinancePackage({
         "Ponto de equilibrio estimado com CMV, impostos e comissoes/tarifas como custos variaveis; CMV inclui comida, embalagens e descartaveis. Motoboy fica em custos fixos."
       ],
       ignoredBankFiles,
+      mercadoPago,
       transferAdjustments,
       units
     },
